@@ -28,8 +28,8 @@ Goals:
    every ad the filter skips.
 4. Let a job link be submitted from anywhere through a webhook.
 5. Email a daily digest with new roles and upcoming closing dates.
-6. Measure, on hand-labelled real ads, whether the LLM does better than plain keyword rules, and what it
-   costs.
+6. Measure, on hand-labelled real ads, whether the LLM does better than plain keyword rules, whether a
+   cheap model is good enough, and what each option costs.
 
 Non-goals:
 
@@ -70,7 +70,7 @@ flowchart LR
         db[(Postgres)]
         mail[Mailpit]
     end
-    llm[Claude or OpenAI API]
+    llm[Gemini or Claude API]
     reviewer[Reviewer]
 
     n8n -- fetch ads --> boards
@@ -160,11 +160,17 @@ tools.
 Providers sit behind one Python interface, `Extractor.extract(posting) -> ExtractionResult`, with three
 implementations:
 
-- Claude, through the official `anthropic` SDK. The model is configurable and defaults to
-  `claude-opus-5-5`. Effort starts at `low` and is raised only if the dev set shows it helps.
-  Server-side refusal fallback is enabled.
-- OpenAI, through the official `openai` SDK. The model is configurable.
+- Gemini, through the official `google-genai` SDK, used for daily runs because it is the cheapest
+  option. The model is configurable and defaults to `gemini-3.8-flash`; `gemini-3.5-flash-lite` is the
+  cheaper alternative. Gemini accepts only a subset of JSON Schema, so the schema is kept flat and simple.
+- Claude, through the official `anthropic` SDK, used as the comparison point in the evaluation. The model
+  is configurable and defaults to `claude-opus-5-5`. Server-side refusal fallback is enabled.
 - A fake extractor that returns fixed results, used by all automated tests.
+
+Every response is validated again with Pydantic, whatever the provider guarantees. Thinking or effort is
+set to the lowest level that holds accuracy on the dev set. On Gemini's free tier Google may use requests
+to improve its products. That is acceptable here because only public ad text is sent; the skills list used
+for the fit score never leaves the machine.
 
 Every call is logged with provider, model, input and output tokens, cost (from `config/prices.yaml`),
 latency, request id and outcome.
@@ -310,8 +316,9 @@ TypeScript side turns positions into highlighted spans, merging overlaps. That f
 
 - Idempotency: ads are unique on source and source id, and extraction is keyed by text hash. Re-running an
   ingest or re-submitting a link never creates duplicates or a second LLM call for unchanged text.
-- LLM errors: the SDKs retry rate limits and server errors with backoff (3 retries, 60-second timeout).
-  An ad that still fails goes to review with `extraction_failed`.
+- LLM errors: rate limits and server errors are retried with backoff (3 retries, 60-second timeout), using
+  the SDK's own retry settings where it has them. An ad that still fails goes to review with
+  `extraction_failed`.
 - n8n retries HTTP calls, and the error workflow emails any workflow failure.
 - Each ingest call records its counts, and each LLM call records tokens and cost. The digest and the
   stats endpoint read from these.
@@ -339,7 +346,7 @@ Test set:
 
 Compared methods:
 
-- The LLM pipeline, for each provider and model being compared.
+- The LLM pipeline with Gemini 3.8 Flash, Gemini 3.5 Flash-Lite and Claude Opus 5.5.
 - A rules baseline: regular expressions and keyword lists for the same fields, plus the board's own
   structured fields where they exist. Its routing sends an ad to the tracker only when every field was
   found.
@@ -352,9 +359,12 @@ Metrics, reported with counts as well as percentages:
 - Whether any injected copy was routed automatically with a wrong value.
 - Cost per 1,000 ads and median latency per ad.
 
+The daily model is chosen from dev-set results before the test set is scored. In order of priority: the
+error rate among automatically routed ads, then the share sent to review, then cost.
+
 Commands: `python -m jobpipe.eval.sample` builds the snapshots and the label template, and
-`python -m jobpipe.eval.run --provider claude --split dev` writes results to `eval/results/` as Markdown
-and JSON.
+`python -m jobpipe.eval.run --provider gemini --model gemini-3.8-flash --split dev` writes results to
+`eval/results/` as Markdown and JSON.
 
 ## 14. Testing and CI
 
@@ -381,7 +391,7 @@ job-ad-pipeline/
   api/               Python service (FastAPI), Dockerfile, tests
     jobpipe/
       sources/       greenhouse.py, lever.py, ashby.py, links.py
-      llm/           base.py, claude.py, openai_extractor.py, fake.py, prompt.py, schema.py
+      llm/           base.py, gemini.py, claude.py, fake.py, prompt.py, schema.py
       eval/          sample.py, run.py, baseline.py
       migrations/
   web/               React + TypeScript review page (Vite)
@@ -393,9 +403,9 @@ job-ad-pipeline/
 
 ## 16. Configuration
 
-- `.env`: database URLs, `LLM_PROVIDER`, `CLAUDE_MODEL` (default `claude-opus-5-5`), `OPENAI_MODEL`,
-  provider API keys, `MACHINE_API_KEY`, `WEBHOOK_SECRET`, `SESSION_SECRET`, SMTP settings, digest
-  recipient.
+- `.env`: database URLs, `LLM_PROVIDER` (`gemini`, `claude` or `fake`), `GEMINI_MODEL` (default
+  `gemini-3.8-flash`), `CLAUDE_MODEL` (default `claude-opus-5-5`), `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`,
+  `MACHINE_API_KEY`, `WEBHOOK_SECRET`, `SESSION_SECRET`, SMTP settings, digest recipient.
 - `config/companies.yaml`: name, source, slug and active flag for each company.
 - `config/filters.yaml`: location terms and title include and exclude keywords.
 - `config/profile.yaml`: skills and synonyms for the fit score.
@@ -408,10 +418,10 @@ job-ad-pipeline/
 - Generating cover letters or applying automatically.
 - More than one user, and user roles.
 - Cloud deployment, Airtable or Notion sync, and a mobile app.
+- An OpenAI extractor. The extractor interface allows one to be added later.
 
 ## 18. Open decisions
 
 - The final company list.
-- Which providers and models go into the comparison (Claude Opus 5.5 at minimum; optionally a cheaper Claude
-  model and an OpenAI model).
-- The OpenAI model name and the n8n image tag, fixed when the build starts.
+- Gemini free tier or paid tier.
+- The n8n image tag, fixed when the build starts.
