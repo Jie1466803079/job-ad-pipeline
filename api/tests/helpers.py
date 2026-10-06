@@ -73,3 +73,14 @@ def good_greenhouse_payload() -> ExtractionPayload:
             SkillItem(skill="AWS", quote="Experience with AWS"),
         ],
     )
+
+
+SAMPLE_AD = (
+    "Join our data team in Sydney. This is a hybrid role.\n"
+    "Applicants must be Australian citizens or permanent residents.\n"
+    "You must hold an NV1 clearance.\n"
+    "We are unable to offer visa sponsorship.\n"
+    "Salary: $120,000 - $140,000 + super.\n"
+    "Applications close 31 October 2026.\n"
+    "Strong Python skills are essential."
+)
