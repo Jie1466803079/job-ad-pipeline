@@ -1,7 +1,7 @@
 VENV := api/.venv
 PY := $(VENV)/bin/python
 
-.PHONY: venv test lint
+.PHONY: venv test lint db down
 
 venv:
 	python3 -m venv $(VENV)
@@ -13,3 +13,9 @@ test:
 
 lint:
 	cd api && .venv/bin/ruff check .
+
+db:
+	docker compose up -d --wait db
+
+down:
+	docker compose down
