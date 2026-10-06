@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from jobpipe import repo
 from jobpipe.clock import sydney_today
 from jobpipe.deps import get_conn, require_api_key
-from jobpipe.pipeline import Pipeline
+from jobpipe.pipeline import Pipeline, UnreadablePayload
 from jobpipe.sources.urls import LinkRejected, resolve_link
 
 router = APIRouter(prefix="/machine", dependencies=[Depends(require_api_key)])
@@ -48,8 +48,8 @@ def ingest(body: IngestRequest, request: Request, conn: Connection = Depends(get
     try:
         counts, outcomes = pipeline.ingest(company, body.payload, complete=body.complete,
                                            only_source_id=body.only_source_id)
-    except (KeyError, TypeError, ValueError, AttributeError) as exc:
-        raise HTTPException(status_code=422, detail=f"could not read the {body.source} response: {exc!r}") from exc
+    except UnreadablePayload as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     return {"counts": asdict(counts), "outcomes": [asdict(outcome) for outcome in outcomes]}
 
 

@@ -93,3 +93,12 @@ def test_digest_and_maintenance(client):
     assert set(digest) == {"tracked", "closing_soon", "review_count", "counts", "llm_cost_usd"}
     maintenance = client.post("/machine/maintenance", headers=KEY).json()
     assert set(maintenance) == {"closed", "text_deleted"}
+
+
+def test_internal_errors_are_not_reported_as_unreadable_payloads(client, monkeypatch):
+    def broken_checks(*args, **kwargs):
+        raise ValueError("bug in the checks")
+
+    monkeypatch.setattr("jobpipe.pipeline.run_checks", broken_checks)
+    with pytest.raises(ValueError, match="bug in the checks"):
+        ingest(client, load_fixture("greenhouse_board.json"))

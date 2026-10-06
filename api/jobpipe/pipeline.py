@@ -22,6 +22,10 @@ from jobpipe.sources import standardise
 HUMAN_STATUSES = {"dismissed", "applied", "interview", "offer", "rejected"}
 
 
+class UnreadablePayload(Exception):
+    """The board response is not in the shape its source uses."""
+
+
 @dataclass
 class IngestCounts:
     fetched: int = 0
@@ -59,7 +63,10 @@ class Pipeline:
 
     def ingest(self, company: dict, payload: Any, complete: bool,
                only_source_id: str | None = None) -> tuple[IngestCounts, list[PostingOutcome]]:
-        postings = standardise(company["source"], payload, company["name"])
+        try:
+            postings = standardise(company["source"], payload, company["name"])
+        except (KeyError, TypeError, ValueError, AttributeError) as exc:
+            raise UnreadablePayload(f"could not read the {company['source']} response: {exc!r}") from exc
         if only_source_id is not None:
             postings = [p for p in postings if p.source_id == only_source_id]
             complete = False
