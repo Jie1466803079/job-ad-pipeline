@@ -1,0 +1,22 @@
+# Skills for the fit score. A required skill counts as matched when it contains one of these names
+# or synonyms as a whole word. Edit to match your own skills.
+skills:
+  - {name: Python}
+  - {name: SQL, synonyms: [MySQL, PostgreSQL, Postgres]}
+  - {name: R}
+  - {name: AWS, synonyms: [Amazon Web Services, S3, Glue, RDS, Redshift, EMR, Athena, SageMaker]}
+  - {name: Snowflake}
+  - {name: BigQuery}
+  - {name: Spark, synonyms: [PySpark, Apache Spark]}
+  - {name: ETL, synonyms: [ELT, data pipeline, data pipelines]}
+  - {name: APIs, synonyms: [API, REST, REST APIs]}
+  - {name: PyTorch}
+  - {name: TensorFlow}
+  - {name: scikit-learn, synonyms: [sklearn]}
+  - {name: machine learning, synonyms: [ML, deep learning]}
+  - {name: LLMs, synonyms: [LLM, large language models, generative AI, GenAI]}
+  - {name: graph neural networks, synonyms: [GNN, GNNs]}
+  - {name: statistics, synonyms: [statistical]}
+  - {name: Git, synonyms: [GitHub]}
+  - {name: Tableau}
+  - {name: data visualisation, synonyms: [data visualization, dashboards]}

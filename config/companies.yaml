@@ -1,0 +1,17 @@
+# Companies polled every day. source is greenhouse, lever or ashby. slug is the board name in the
+# board's URL. These all had Australian roles on their boards on 6 October 2026. Edit freely.
+companies:
+  - {name: Airwallex, source: ashby, slug: airwallex}
+  - {name: Dovetail, source: ashby, slug: dovetail}
+  - {name: Lorikeet, source: ashby, slug: lorikeet}
+  - {name: Xero, source: ashby, slug: xero}
+  - {name: Buildkite, source: greenhouse, slug: buildkite}
+  - {name: Culture Amp, source: greenhouse, slug: cultureamp}
+  - {name: Eucalyptus, source: greenhouse, slug: eucalyptus}
+  - {name: IMC, source: greenhouse, slug: imc}
+  - {name: Octopus Deploy, source: greenhouse, slug: octopusdeploy}
+  - {name: Prospa, source: greenhouse, slug: prospa}
+  - {name: Brighte, source: lever, slug: brighte}
+  - {name: Deputy, source: lever, slug: deputy}
+  - {name: Immutable, source: lever, slug: immutable}
+  - {name: Mable, source: lever, slug: mable}
