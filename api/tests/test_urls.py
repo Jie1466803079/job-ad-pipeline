@@ -37,6 +37,7 @@ def test_resolve_link_accepts_supported_boards(url, source, slug, job_id, api_ur
     "https://jobs.ashbyhq.com/exampleab",
     f"ftp://jobs.lever.co/examplelv/{LEVER_ID}",
     "not a url",
+    "https://[abc/x",
 ])
 def test_resolve_link_rejects_everything_else(url):
     with pytest.raises(LinkRejected):

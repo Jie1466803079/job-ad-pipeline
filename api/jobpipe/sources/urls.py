@@ -62,7 +62,10 @@ def _resolved(source: str, slug: str, job_id: str, id_re: re.Pattern) -> Resolve
 
 
 def resolve_link(url: str) -> ResolvedLink:
-    parts = urlsplit(url.strip())
+    try:
+        parts = urlsplit(url.strip())
+    except ValueError:
+        raise LinkRejected("the link could not be parsed") from None
     if parts.scheme != "https":
         raise LinkRejected("only https links are accepted")
     if parts.username or parts.password:
