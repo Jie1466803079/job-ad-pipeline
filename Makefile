@@ -1,7 +1,7 @@
 VENV := api/.venv
 PY := $(VENV)/bin/python
 
-.PHONY: venv test lint db down
+.PHONY: venv test lint db down up ingest-once smoke
 
 venv:
 	python3 -m venv $(VENV)
@@ -19,3 +19,12 @@ db:
 
 down:
 	docker compose down
+
+up:
+	docker compose up -d --build --wait
+
+ingest-once:
+	set -a; . ./.env; set +a; $(PY) scripts/ingest_once.py "$(COMPANY)"
+
+smoke:
+	set -a; . ./.env; set +a; $(PY) -m jobpipe.llm.smoke --provider $(PROVIDER)
