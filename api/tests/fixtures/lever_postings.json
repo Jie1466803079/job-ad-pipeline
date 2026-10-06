@@ -1,0 +1,24 @@
+[
+  {
+    "additional": "<div>We are an equal opportunity employer.</div>",
+    "additionalPlain": "We are an equal opportunity employer.",
+    "applyUrl": "https://jobs.lever.co/examplelv/3f2b9a52-1c1e-4c55-9d37-1b7a3a8a0001/apply",
+    "categories": {"commitment": "Permanent - Full time", "department": "Data", "location": "Sydney", "team": "Analytics", "allLocations": ["Sydney"]},
+    "country": "AU",
+    "createdAt": 1787803633392,
+    "description": "<div>Our analytics team is growing.</div>",
+    "descriptionBody": "<div>Our analytics team is growing.</div>",
+    "descriptionBodyPlain": "Our analytics team is growing.",
+    "descriptionPlain": "Our analytics team is growing.\n",
+    "hostedUrl": "https://jobs.lever.co/examplelv/3f2b9a52-1c1e-4c55-9d37-1b7a3a8a0001",
+    "id": "3f2b9a52-1c1e-4c55-9d37-1b7a3a8a0001",
+    "lists": [
+      {"text": "What you'll need", "content": "<li>Graduate degree in a quantitative field</li><li>Python or R</li>"}
+    ],
+    "opening": "",
+    "openingPlain": "",
+    "salaryRange": {"currency": "AUD", "interval": "per-year-salary", "min": 85000, "max": 95000},
+    "text": "Graduate Data Analyst",
+    "workplaceType": "hybrid"
+  }
+]

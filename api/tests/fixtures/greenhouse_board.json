@@ -1,0 +1,35 @@
+{
+  "jobs": [
+    {
+      "absolute_url": "https://job-boards.greenhouse.io/examplegh/jobs/7001001",
+      "application_deadline": "2026-10-31",
+      "company_name": "Example GH",
+      "content": "&lt;p&gt;Join our data team in Sydney. This is a hybrid role with three days a week in our Sydney office.&lt;/p&gt;&lt;ul&gt;&lt;li&gt;Strong Python and SQL skills&lt;/li&gt;&lt;li&gt;Experience with AWS&lt;/li&gt;&lt;/ul&gt;&lt;p&gt;You must have full working rights in Australia.&lt;/p&gt;&lt;p&gt;Applications close 31 October 2026.&lt;/p&gt;",
+      "departments": [{"id": 1, "name": "Data", "child_ids": [], "parent_id": null}],
+      "first_published": "2026-09-20T22:33:35-04:00",
+      "id": 7001001,
+      "internal_job_id": 5001001,
+      "language": "en",
+      "location": {"name": "Sydney, New South Wales, Australia"},
+      "metadata": null,
+      "offices": [{"id": 9001, "name": "Sydney", "location": "Level 1, 1 Example St, Sydney", "child_ids": [], "parent_id": null}],
+      "requisition_id": "REQ-1",
+      "title": "Data Engineer",
+      "updated_at": "2026-09-23T01:03:39-04:00"
+    },
+    {
+      "absolute_url": "https://job-boards.greenhouse.io/examplegh/jobs/7001002",
+      "application_deadline": null,
+      "company_name": "Example GH",
+      "content": "&lt;p&gt;Sell our product to companies in London.&lt;/p&gt;",
+      "first_published": "2026-09-21T10:00:00-04:00",
+      "id": 7001002,
+      "location": {"name": "London, UK"},
+      "metadata": null,
+      "offices": [],
+      "title": "Account Executive",
+      "updated_at": "2026-09-21T10:00:00-04:00"
+    }
+  ],
+  "meta": {"total": 2}
+}
