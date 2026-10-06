@@ -1,7 +1,7 @@
 """Builders shared by the tests."""
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from jobpipe.models import BoardFields, Posting
@@ -15,7 +15,7 @@ def load_fixture(name: str):
 
 
 def posting_with(text: str, board: BoardFields | None = None, title: str = "Data Engineer",
-                 posted: datetime | None = datetime(2026, 9, 20, tzinfo=timezone.utc),
+                 posted: datetime | None = datetime(2026, 9, 20, tzinfo=UTC),
                  source_id: str = "1") -> Posting:
     return make_posting(source="greenhouse", source_id=source_id, company="Example", title=title,
                         url=f"https://example.test/{source_id}", posted_at=posted, text=text,

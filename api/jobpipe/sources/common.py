@@ -1,6 +1,6 @@
 """Helpers shared by the board standardisers."""
 
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 
 from jobpipe.models import BoardFields, EmploymentType, Posting, SalaryPeriod, Source, WorkMode
 from jobpipe.textutil import sha256_text
@@ -36,7 +36,7 @@ def parse_iso_date(value: str | None) -> date | None:
 def from_epoch_ms(value: int | float | None) -> datetime | None:
     if value is None:
         return None
-    return datetime.fromtimestamp(value / 1000, tz=timezone.utc)
+    return datetime.fromtimestamp(value / 1000, tz=UTC)
 
 
 def map_work_mode(value: str | None) -> WorkMode | None:

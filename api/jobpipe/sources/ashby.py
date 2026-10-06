@@ -3,8 +3,13 @@
 from typing import Any
 
 from jobpipe.models import BoardFields, Posting
-from jobpipe.sources.common import (make_posting, map_employment_type, map_salary_period, map_work_mode,
-                                    parse_iso_datetime)
+from jobpipe.sources.common import (
+    make_posting,
+    map_employment_type,
+    map_salary_period,
+    map_work_mode,
+    parse_iso_datetime,
+)
 from jobpipe.textutil import html_to_text
 
 
