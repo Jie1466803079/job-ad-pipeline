@@ -140,3 +140,15 @@ def test_verified_closing_date():
     assert verified_closing_date(good, checks_for(good)) == date(2026, 10, 31)
     bad = payload_with(closing_date=ClosingDateField(value="2026-11-30", quote="Applications close 31 October 2026."))
     assert verified_closing_date(bad, checks_for(bad)) is None
+
+
+@pytest.mark.parametrize("field, value, quote", [
+    ("security_clearance", "other", "No security clearance is required for this role."),
+    ("work_rights", "citizen_only", "You do not need a security clearance for this role."),
+    ("work_rights", "citizen_only", "You do not need to be an Australian citizen to apply."),
+])
+def test_negated_sentences_do_not_support_citizen_only_or_clearance(field, value, quote):
+    model = ClearanceField if field == "security_clearance" else WorkRightsField
+    payload = payload_with(**{field: model(value=value, quote=quote)})
+    results = checks_for(payload, ad=f"{SAMPLE_AD}\n{quote}")
+    assert get(results, field, "matches_quote").status == "fail"

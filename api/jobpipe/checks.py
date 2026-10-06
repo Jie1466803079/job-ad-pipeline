@@ -20,6 +20,9 @@ _RIGHTS_PHRASES = ("right to work", "rights to work", "working rights", "work ri
                    "authorised to work", "authorized to work", "work permit", "visa")
 _CLEARANCE_WORDS = ("baseline", "nv1", "nv2", "negative vetting", "positive vetting", "clearance")
 _NO_SPONSOR = re.compile(r"\b(no|not|unable|cannot|can't|don't|do not|won't|will not)\b[^.]{0,40}sponsor")
+_NEGATION = r"\b(no|not|without|don't|do not|doesn't|does not|isn't|is not|aren't|are not|needn't|need not)\b[^.]{0,40}"
+_NEGATED_CLEARANCE = re.compile(_NEGATION + r"(clearance|baseline|nv-?[12]|vetting)")
+_NEGATED_CITIZEN = re.compile(_NEGATION + r"citizen")
 _RANGE_K = re.compile(r"(\d[\d,]*(?:\.\d+)?)\s*(?:-|to)\s*\$?\s*(\d[\d,]*(?:\.\d+)?)\s*k\b")
 _NUMBER = re.compile(r"(\d[\d,]*(?:\.\d+)?)\s*(k)?\b")
 _COMPATIBLE_EMPLOYMENT = {frozenset({"graduate_program", "full_time"})}
@@ -161,10 +164,10 @@ def _date_from_quote(quote: str, reference: date) -> date | None:
 def _work_rights_ok(value: str, q: str) -> bool:
     citizen = "citizen" in q
     permanent = "permanent resident" in q or re.search(r"\bpr\b", q) is not None
-    clearance = any(word in q for word in _CLEARANCE_WORDS)
+    clearance = any(word in q for word in _CLEARANCE_WORDS) and _NEGATED_CLEARANCE.search(q) is None
     rights = any(phrase in q for phrase in _RIGHTS_PHRASES)
     if value == "citizen_only":
-        return (citizen and not permanent) or clearance
+        return (citizen and not permanent and _NEGATED_CITIZEN.search(q) is None) or clearance
     if value == "citizen_or_pr":
         return citizen and permanent
     if value == "any_work_rights":
@@ -175,6 +178,8 @@ def _work_rights_ok(value: str, q: str) -> bool:
 
 
 def _clearance_ok(value: str, q: str) -> bool:
+    if _NEGATED_CLEARANCE.search(q):
+        return False
     if value == "baseline":
         return "baseline" in q
     if value == "nv1":
