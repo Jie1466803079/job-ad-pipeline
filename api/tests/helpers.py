@@ -4,6 +4,15 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
+from jobpipe.llm.schema import (
+    ClosingDateField,
+    ExtractionPayload,
+    LocationsField,
+    SkillItem,
+    WorkModeField,
+    WorkRightsField,
+    not_stated_payload,
+)
 from jobpipe.models import BoardFields, Posting
 from jobpipe.sources.common import make_posting
 
@@ -44,3 +53,23 @@ def write_test_config(directory: Path) -> Path:
     for name, content in TEST_CONFIG.items():
         (directory / name).write_text(content, encoding="utf-8")
     return directory
+
+
+def payload_with(**fields) -> ExtractionPayload:
+    return not_stated_payload().model_copy(update=fields)
+
+
+def good_greenhouse_payload() -> ExtractionPayload:
+    """A correct extraction for fixture job 7001001: every quote is in the ad and agrees with the board."""
+    return payload_with(
+        work_rights=WorkRightsField(value="any_work_rights", quote="You must have full working rights in Australia."),
+        closing_date=ClosingDateField(value="2026-10-31", quote="Applications close 31 October 2026."),
+        locations=LocationsField(value=["Sydney"], quote="Join our data team in Sydney."),
+        work_mode=WorkModeField(value="hybrid",
+                                quote="This is a hybrid role with three days a week in our Sydney office."),
+        required_skills=[
+            SkillItem(skill="Python", quote="Strong Python and SQL skills"),
+            SkillItem(skill="SQL", quote="Strong Python and SQL skills"),
+            SkillItem(skill="AWS", quote="Experience with AWS"),
+        ],
+    )
