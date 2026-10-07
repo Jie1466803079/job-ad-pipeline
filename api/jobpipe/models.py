@@ -11,6 +11,11 @@ EmploymentType = Literal["full_time", "part_time", "contract", "internship", "gr
 SalaryPeriod = Literal["year", "month", "day", "hour"]
 
 
+def compose_full_text(title: str, text: str) -> str:
+    """Title and body: what the LLM reads, what quotes are checked against, and what the review page shows."""
+    return f"{title}\n\n{text}"
+
+
 class BoardFields(BaseModel):
     """Values the job board itself supplies. The checks compare the extraction against them."""
 
@@ -43,4 +48,4 @@ class Posting(BaseModel):
     @property
     def full_text(self) -> str:
         """Title and body: what the LLM reads and what quotes are checked against."""
-        return f"{self.title}\n\n{self.text}"
+        return compose_full_text(self.title, self.text)

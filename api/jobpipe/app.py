@@ -9,7 +9,7 @@ from jobpipe import db, repo
 from jobpipe.configfiles import load_companies, load_filters, load_prices, load_profile
 from jobpipe.llm.base import Extractor
 from jobpipe.llm.factory import make_extractor
-from jobpipe.routes import auth, machine
+from jobpipe.routes import auth, machine, review
 from jobpipe.settings import Settings
 
 SESSION_COOKIE = "jobpipe_session"
@@ -42,6 +42,7 @@ def create_app(settings: Settings | None = None, extractor: Extractor | None = N
                        max_age=SESSION_MAX_AGE, same_site="strict", https_only=settings.session_cookie_secure)
     app.include_router(machine.router)
     app.include_router(auth.router)
+    app.include_router(review.router)
 
     @app.get("/health")
     def health() -> dict:

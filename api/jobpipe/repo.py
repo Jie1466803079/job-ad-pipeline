@@ -108,6 +108,69 @@ def latest_extraction(conn: Connection, posting_id: int) -> dict | None:
                            ORDER BY created_at DESC, id DESC LIMIT 1""", (posting_id,)).fetchone()
 
 
+_FIT_RATIO = "jsonb_array_length(e.fit -> 'matched')::float / NULLIF((e.fit ->> 'total')::int, 0)"
+_BEST_FIRST = f"{_FIT_RATIO} DESC NULLS LAST, p.closing_date ASC NULLS LAST, p.id DESC"
+
+# Each queue tab: which ads it lists and in what order. Applications stay under applied after they close.
+QUEUE_TABS: dict[str, tuple[str, str]] = {
+    "review": ("p.status = 'review' AND p.closed_at IS NULL", _BEST_FIRST),
+    "tracked": ("p.status = 'tracked' AND p.closed_at IS NULL", _BEST_FIRST),
+    "ineligible": ("p.status = 'ineligible' AND p.closed_at IS NULL", _BEST_FIRST),
+    "applied": ("p.status IN ('applied', 'interview', 'offer', 'rejected')",
+                "p.decided_at DESC NULLS LAST, p.id DESC"),
+    "closed": ("p.closed_at IS NOT NULL AND p.status NOT IN ('skipped', 'dismissed')",
+               "p.closed_at DESC, p.id DESC"),
+    "skipped": ("p.status = 'skipped'", "p.first_seen_at DESC, p.id DESC"),
+    "dismissed": ("p.status = 'dismissed'", "p.decided_at DESC NULLS LAST, p.id DESC"),
+}
+
+
+def list_postings(conn: Connection, tab: str, limit: int) -> tuple[list[dict], int]:
+    """A queue tab: its ads with their current extraction and the corrections to it, and how many there are."""
+    where, order = QUEUE_TABS[tab]
+    rows = conn.execute(
+        f"""SELECT p.id, c.name AS company, p.title, p.url, p.status, p.skip_reason, p.closing_date,
+                   p.closed_at, p.board, e.fields, e.fit, e.reasons,
+                   coalesce((SELECT jsonb_agg(r.edited_fields ORDER BY r.created_at, r.id) FROM reviews r
+                             WHERE r.extraction_id = e.id AND r.action = 'edit'), '[]'::jsonb) AS edits
+            FROM postings p
+            JOIN companies c ON c.id = p.company_id
+            LEFT JOIN LATERAL (SELECT id, fields, fit, reasons FROM extractions
+                               WHERE posting_id = p.id AND text_hash = p.text_hash
+                               ORDER BY created_at DESC, id DESC LIMIT 1) e ON TRUE
+            WHERE {where}
+            ORDER BY {order}
+            LIMIT %s""",
+        (limit,),
+    ).fetchall()
+    total = conn.execute(f"SELECT count(*) AS n FROM postings p WHERE {where}").fetchone()["n"]
+    return rows, total
+
+
+def get_posting(conn: Connection, posting_id: int) -> dict | None:
+    return conn.execute("""SELECT p.*, c.name AS company FROM postings p
+                           JOIN companies c ON c.id = p.company_id WHERE p.id = %s""", (posting_id,)).fetchone()
+
+
+def current_extraction(conn: Connection, posting_id: int) -> dict | None:
+    """The newest extraction made from the ad's current text, or None (skipped, or only older text)."""
+    return conn.execute("""SELECT e.* FROM extractions e JOIN postings p ON p.id = e.posting_id
+                           WHERE e.posting_id = %s AND e.text_hash = p.text_hash
+                           ORDER BY e.created_at DESC, e.id DESC LIMIT 1""", (posting_id,)).fetchone()
+
+
+def extraction_history(conn: Connection, posting_id: int) -> list[dict]:
+    return conn.execute("""SELECT id, model, route, fields IS NULL AS failed, created_at FROM extractions
+                           WHERE posting_id = %s ORDER BY created_at, id""", (posting_id,)).fetchall()
+
+
+def reviews_for(conn: Connection, posting_id: int) -> list[dict]:
+    return conn.execute("""SELECT id, extraction_id, username, action, edited_fields, from_status, to_status,
+                                  created_at
+                           FROM reviews WHERE posting_id = %s ORDER BY created_at, id""",
+                        (posting_id,)).fetchall()
+
+
 def insert_llm_call(conn: Connection, posting_id: int, provider: str, model: str, usage: LLMUsage | None,
                     cost_usd: float | None, outcome: str, error: str | None) -> None:
     conn.execute(
