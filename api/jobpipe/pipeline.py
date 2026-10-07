@@ -102,7 +102,7 @@ class Pipeline:
             status, reasons, closing = self._extract(posting_id, posting, counts)
         if existing and existing["status"] in HUMAN_STATUSES:
             status = existing["status"]  # never undo a person's decision
-        repo.set_status(self.conn, posting_id, status, skip_reason, closing)
+        status = repo.set_status(self.conn, posting_id, status, skip_reason, closing)
         self.conn.commit()
         return PostingOutcome(posting.source_id, posting_id, posting.title, action, status, reasons)
 

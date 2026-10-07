@@ -5,13 +5,17 @@ The page splits that text into code points before using them.
 """
 
 import copy
-from typing import Literal, get_args
+from datetime import date
+from typing import Annotated, Literal, Self, get_args
+
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator, model_validator
 
 from jobpipe.fit import FitResult
 from jobpipe.llm.schema import (
     ROUTING_FIELDS,
     ClearanceValue,
     EmploymentValue,
+    PeriodValue,
     SeniorityValue,
     WorkModeValue,
     WorkRightsValue,
@@ -45,6 +49,71 @@ def allowed_actions(status: str, can_edit: bool) -> dict:
         "statuses": list(APPLICATION_STATUSES) if status in APPLICATION_STATUSES else [],
         "can_edit": can_edit,
     }
+
+
+class TransitionRefused(Exception):
+    """The ad's status does not allow this action."""
+
+
+def decision_target(decision: str, status: str) -> str:
+    """The status a decision moves an ad to. Raises TransitionRefused when the status does not allow it."""
+    sources, target = DECISIONS[decision]
+    if status not in sources:
+        raise TransitionRefused(f"An ad that is {status} cannot get the decision {decision}.")
+    return target
+
+
+def check_status_change(status: str) -> None:
+    """Application statuses can be set only once an ad is tracked."""
+    if status not in APPLICATION_STATUSES:
+        raise TransitionRefused(f"Approve the ad before setting an application status. It is {status}.")
+
+
+Place = Annotated[str, StringConstraints(strip_whitespace=True, max_length=100)]
+
+
+class SalaryEdit(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    stated: bool
+    min: float = Field(default=0, ge=0)
+    max: float = Field(default=0, ge=0)
+    currency: str = Field(default="", max_length=10)
+    period: PeriodValue = "not_stated"
+
+    @model_validator(mode="after")
+    def _complete_when_stated(self) -> Self:
+        if self.stated and (self.min > self.max or self.period == "not_stated"):
+            raise ValueError("a stated salary needs a minimum no higher than its maximum, and a pay period")
+        return self
+
+
+class FieldEdits(BaseModel):
+    """A reviewer's corrections. Only the fields that are sent are stored."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    work_rights: WorkRightsValue | None = None
+    security_clearance: ClearanceValue | None = None
+    closing_date: date | Literal["not_stated"] | None = None
+    locations: Annotated[list[Place], Field(max_length=20)] | None = None
+    work_mode: WorkModeValue | None = None
+    seniority: SeniorityValue | None = None
+    employment_type: EmploymentValue | None = None
+    salary: SalaryEdit | None = None
+
+    @field_validator("locations")
+    @classmethod
+    def _drop_empty_places(cls, value: list[str] | None) -> list[str] | None:
+        return None if value is None else [place for place in value if place]
+
+    def changes(self) -> dict:
+        """The corrections as stored in reviews.edited_fields. A salary is always stored whole."""
+        changes = self.model_dump(mode="json", exclude_unset=True, exclude_none=True)
+        if self.salary is not None:
+            salary = self.salary if self.salary.stated else SalaryEdit(stated=False)
+            changes["salary"] = salary.model_dump(mode="json")
+        return changes
 
 
 def apply_edits(fields: dict, edits: list[dict]) -> tuple[dict, set[str]]:

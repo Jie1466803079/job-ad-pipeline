@@ -82,9 +82,16 @@ def touch_posting(conn: Connection, posting_id: int) -> None:
 
 
 def set_status(conn: Connection, posting_id: int, status: str, skip_reason: str | None,
-               closing_date: date | None) -> None:
-    conn.execute("UPDATE postings SET status = %s, skip_reason = %s, closing_date = %s WHERE id = %s",
-                 (status, skip_reason, closing_date, posting_id))
+               closing_date: date | None) -> str:
+    """Store the pipeline's result. A status a person chose (decided_at set) is kept. Returns the stored status."""
+    row = conn.execute(
+        """UPDATE postings SET status = CASE WHEN decided_at IS NULL THEN %s ELSE status END,
+                  skip_reason = %s, closing_date = %s
+           WHERE id = %s
+           RETURNING status""",
+        (status, skip_reason, closing_date, posting_id),
+    ).fetchone()
+    return row["status"]
 
 
 def insert_extraction(conn: Connection, posting_id: int, text_hash: str, provider: str, model: str,
@@ -169,6 +176,28 @@ def reviews_for(conn: Connection, posting_id: int) -> list[dict]:
                                   created_at
                            FROM reviews WHERE posting_id = %s ORDER BY created_at, id""",
                         (posting_id,)).fetchall()
+
+
+def insert_review(conn: Connection, posting_id: int, extraction_id: int | None, username: str, action: str,
+                  edited_fields: dict | None = None, from_status: str | None = None,
+                  to_status: str | None = None) -> None:
+    conn.execute(
+        """INSERT INTO reviews (posting_id, extraction_id, username, action, edited_fields, from_status, to_status)
+           VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+        (posting_id, extraction_id, username, action,
+         Jsonb(edited_fields) if edited_fields is not None else None, from_status, to_status),
+    )
+
+
+def decide_status(conn: Connection, posting_id: int, from_status: str, to_status: str) -> bool:
+    """Set a status a person chose. False when the status is no longer from_status."""
+    cursor = conn.execute("""UPDATE postings SET status = %s, decided_at = now()
+                             WHERE id = %s AND status = %s""", (to_status, posting_id, from_status))
+    return cursor.rowcount == 1
+
+
+def set_closing_date(conn: Connection, posting_id: int, closing_date: date | None) -> None:
+    conn.execute("UPDATE postings SET closing_date = %s WHERE id = %s", (closing_date, posting_id))
 
 
 def insert_llm_call(conn: Connection, posting_id: int, provider: str, model: str, usage: LLMUsage | None,

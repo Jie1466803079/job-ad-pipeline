@@ -2,6 +2,7 @@ import json
 from datetime import UTC, date, datetime
 
 import pytest
+from pydantic import ValidationError
 
 from helpers import good_greenhouse_payload, greenhouse_posting, payload_with
 from jobpipe import review
@@ -109,3 +110,52 @@ def test_build_detail_without_text_or_extraction():
     assert (detail["extraction"], detail["fields"], detail["fit"]) == (None, [], None)
     assert detail["skills"] == {"required": [], "nice_to_have": []}
     assert detail["actions"] == {"decisions": ["approve"], "statuses": [], "can_edit": False}
+
+
+@pytest.mark.parametrize("decision, status, target", [
+    ("approve", "review", "tracked"), ("approve", "skipped", "tracked"), ("approve", "dismissed", "tracked"),
+    ("override_ineligible", "ineligible", "tracked"), ("dismiss", "review", "dismissed"),
+    ("dismiss", "tracked", "dismissed"), ("dismiss", "ineligible", "dismissed"),
+])
+def test_allowed_decisions(decision, status, target):
+    assert review.decision_target(decision, status) == target
+
+
+@pytest.mark.parametrize("decision, status", [
+    ("approve", "tracked"), ("approve", "ineligible"), ("override_ineligible", "review"),
+    ("dismiss", "applied"), ("dismiss", "dismissed"),
+])
+def test_refused_decisions(decision, status):
+    with pytest.raises(review.TransitionRefused):
+        review.decision_target(decision, status)
+
+
+def test_status_changes_need_a_tracked_ad():
+    review.check_status_change("tracked")
+    review.check_status_change("offer")
+    with pytest.raises(review.TransitionRefused, match="Approve the ad"):
+        review.check_status_change("review")
+
+
+def test_corrections_are_validated_and_tidied():
+    edits = review.FieldEdits.model_validate({"locations": [" Sydney ", "", "Remote, Australia"],
+                                               "closing_date": "2026-11-14"})
+    assert edits.changes() == {"locations": ["Sydney", "Remote, Australia"], "closing_date": "2026-11-14"}
+    unstated = review.FieldEdits.model_validate({"salary": {"stated": False, "min": 5}})
+    assert unstated.changes() == {"salary": {"stated": False, "min": 0, "max": 0, "currency": "",
+                                             "period": "not_stated"}}
+    stated = review.FieldEdits.model_validate({"salary": {"stated": True, "min": 1, "max": 2, "period": "hour"}})
+    assert stated.changes()["salary"] == {"stated": True, "min": 1, "max": 2, "currency": "", "period": "hour"}
+    assert review.FieldEdits.model_validate({"work_mode": None}).changes() == {}
+
+
+@pytest.mark.parametrize("body", [
+    {"work_rights": "maybe"},
+    {"closing_date": "31/10/2026"},
+    {"colour": "blue"},
+    {"salary": {"stated": True, "min": 2, "max": 1, "period": "year"}},
+    {"salary": {"stated": True, "min": 1, "max": 2}},
+])
+def test_invalid_corrections_are_refused(body):
+    with pytest.raises(ValidationError):
+        review.FieldEdits.model_validate(body)

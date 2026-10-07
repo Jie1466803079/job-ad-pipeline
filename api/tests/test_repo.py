@@ -60,3 +60,20 @@ def test_touch_reopens_unless_the_closing_date_has_passed(conn):
     conn.execute("UPDATE postings SET closed_at = now() WHERE id = %s", (posting_id,))
     repo.touch_posting(conn, posting_id)
     assert repo.find_posting(conn, "greenhouse", "1")["closed_at"] is not None
+
+
+def test_set_status_keeps_a_status_a_person_chose(conn):
+    company = a_company(conn)
+    posting_id = repo.insert_posting(conn, company["id"], posting_with("Some text."), status="review")
+    assert repo.set_status(conn, posting_id, "tracked", None, None) == "tracked"
+    assert repo.decide_status(conn, posting_id, "tracked", "dismissed")
+    assert repo.set_status(conn, posting_id, "review", None, date(2026, 11, 1)) == "dismissed"
+    assert repo.get_posting(conn, posting_id)["closing_date"] == date(2026, 11, 1)
+
+
+def test_decide_status_refuses_a_status_that_changed_meanwhile(conn):
+    company = a_company(conn)
+    posting_id = repo.insert_posting(conn, company["id"], posting_with("Some text."), status="review")
+    assert repo.decide_status(conn, posting_id, "review", "tracked")
+    assert not repo.decide_status(conn, posting_id, "review", "dismissed")
+    assert repo.get_posting(conn, posting_id)["status"] == "tracked"

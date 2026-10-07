@@ -1,3 +1,5 @@
+from datetime import date
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -132,3 +134,83 @@ def test_detail_after_the_text_was_deleted_keeps_the_values(client, conn):
 
 def test_unknown_ad_is_404(client):
     assert client.get("/api/postings/999").status_code == 404
+
+
+def test_write_routes_need_a_login(client, conn):
+    posting_id = store_ad(conn, greenhouse_posting(), good_greenhouse_payload())
+    client.post("/auth/logout")
+    assert client.patch(f"/api/postings/{posting_id}/fields", json={"work_mode": "remote"}).status_code == 401
+    assert client.post(f"/api/postings/{posting_id}/decision", json={"decision": "dismiss"}).status_code == 401
+    assert client.patch(f"/api/postings/{posting_id}/status", json={"status": "applied"}).status_code == 401
+    assert conn.execute("SELECT count(*) AS n FROM reviews").fetchone()["n"] == 0
+
+
+def test_a_correction_is_stored_beside_the_extraction(client, conn):
+    posting_id = store_ad(conn, greenhouse_posting(), good_greenhouse_payload())
+    ad = client.patch(f"/api/postings/{posting_id}/fields", json={"work_rights": "citizen_or_pr"}).json()
+    rights = next(field for field in ad["fields"] if field["name"] == "work_rights")
+    assert (rights["value"], rights["extracted"], rights["edited"]) == ("citizen_or_pr", "any_work_rights", True)
+    assert repo.current_extraction(conn, posting_id)["fields"]["work_rights"]["value"] == "any_work_rights"
+    row = conn.execute("SELECT username, action, edited_fields FROM reviews").fetchone()
+    assert row == {"username": "jie", "action": "edit", "edited_fields": {"work_rights": "citizen_or_pr"}}
+    assert ad["history"][0]["fields"] == ["work_rights"]
+    items = client.get("/api/postings", params={"tab": "tracked"}).json()["items"]
+    assert items[0]["work_rights"] == "citizen_or_pr"
+
+
+def test_correcting_the_closing_date_updates_the_date_used_for_closing(client, conn):
+    posting_id = store_ad(conn, greenhouse_posting(), good_greenhouse_payload())
+    client.patch(f"/api/postings/{posting_id}/fields", json={"closing_date": "2026-11-14"})
+    assert repo.get_posting(conn, posting_id)["closing_date"] == date(2026, 11, 14)
+    client.patch(f"/api/postings/{posting_id}/fields", json={"closing_date": "not_stated"})
+    assert repo.get_posting(conn, posting_id)["closing_date"] == date(2026, 10, 31)  # the board's deadline
+
+
+def test_invalid_corrections_change_nothing(client, conn):
+    posting_id = store_ad(conn, greenhouse_posting(), good_greenhouse_payload())
+    for body in ({"work_rights": "maybe"}, {"colour": "blue"}, {}, {"work_mode": None}):
+        assert client.patch(f"/api/postings/{posting_id}/fields", json=body).status_code == 422
+    assert conn.execute("SELECT count(*) AS n FROM reviews").fetchone()["n"] == 0
+
+
+def test_an_ad_without_extracted_values_cannot_be_corrected(client, conn):
+    skipped = store_ad(conn, posting_with("Sales.", title="Account Executive", source_id="3"), None)
+    assert client.patch(f"/api/postings/{skipped}/fields", json={"work_mode": "remote"}).status_code == 409
+
+
+def test_decisions_follow_the_allowed_moves_and_are_recorded_once(client, conn):
+    posting_id = store_ad(conn, posting_with("Some text.", source_id="2"), UNVERIFIED)
+
+    def decide(decision):
+        return client.post(f"/api/postings/{posting_id}/decision", json={"decision": decision})
+
+    assert decide("approve").json()["status"] == "tracked"
+    assert decide("approve").status_code == 409
+    assert decide("override_ineligible").status_code == 409
+    assert decide("dismiss").json()["status"] == "dismissed"
+    assert decide("approve").json()["status"] == "tracked"
+    rows = conn.execute("SELECT action, from_status, to_status FROM reviews ORDER BY id").fetchall()
+    assert [tuple(row.values()) for row in rows] == [("approve", "review", "tracked"),
+                                                     ("dismiss", "tracked", "dismissed"),
+                                                     ("approve", "dismissed", "tracked")]
+    assert repo.get_posting(conn, posting_id)["decided_at"] is not None
+
+
+def test_override_moves_an_ineligible_ad_to_tracked(client, conn):
+    text = "Applicants must be Australian citizens."
+    posting_id = store_ad(conn, posting_with(text, source_id="6"),
+                          payload_with(work_rights=WorkRightsField(value="citizen_only", quote=text)))
+    assert repo.get_posting(conn, posting_id)["status"] == "ineligible"
+    response = client.post(f"/api/postings/{posting_id}/decision", json={"decision": "override_ineligible"})
+    assert response.json()["status"] == "tracked"
+
+
+def test_application_status_needs_a_tracked_ad(client, conn):
+    in_review = store_ad(conn, posting_with("Some text.", source_id="2"), UNVERIFIED)
+    assert client.patch(f"/api/postings/{in_review}/status", json={"status": "applied"}).status_code == 409
+    tracked = store_ad(conn, greenhouse_posting(), good_greenhouse_payload())
+    for status in ("applied", "interview", "rejected", "tracked"):
+        assert client.patch(f"/api/postings/{tracked}/status", json={"status": status}).json()["status"] == status
+    assert client.patch(f"/api/postings/{tracked}/status", json={"status": "dismissed"}).status_code == 422
+    assert client.patch(f"/api/postings/{tracked}/status", json={"status": "tracked"}).status_code == 200
+    assert conn.execute("SELECT count(*) AS n FROM reviews").fetchone()["n"] == 4
