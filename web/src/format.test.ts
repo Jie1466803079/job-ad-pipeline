@@ -71,6 +71,9 @@ describe('checkLabel and decisionLabel', () => {
       'Quote found in the ad: no (quote not found in the ad)',
     )
     expect(checkLabel({ name: 'matches_quote', status: 'pass', reason: '' })).toBe('Value matches the quote: yes')
+    expect(checkLabel({ name: 'quote_found', status: 'pass', reason: 'not stated' })).toBe(
+      'Nothing stated, so there is no quote to check',
+    )
     expect(decisionLabel('approve', 'review')).toBe('Approve')
     expect(decisionLabel('approve', 'dismissed')).toBe('Restore')
     expect(decisionLabel('approve', 'skipped')).toBe('Track anyway')

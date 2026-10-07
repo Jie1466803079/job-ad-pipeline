@@ -77,6 +77,10 @@ export function fieldValueLabel(field: FieldView, which: 'value' | 'extracted' =
 }
 
 export function checkLabel(check: Check): string {
+  // The service passes the quote check of a not-stated field with the reason "not stated".
+  if (check.name === 'quote_found' && check.status === 'pass' && check.reason === 'not stated') {
+    return 'Nothing stated, so there is no quote to check'
+  }
   const result = check.status === 'pass' ? 'yes' : 'no'
   return `${CHECK_LABELS[check.name]}: ${result}${check.reason ? ` (${check.reason})` : ''}`
 }
