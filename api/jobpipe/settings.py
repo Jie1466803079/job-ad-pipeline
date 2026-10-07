@@ -6,6 +6,7 @@ from typing import Literal
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 DEFAULT_CONFIG_DIR = Path(__file__).resolve().parents[2] / "config"
+DEFAULT_WEB_DIR = Path(__file__).resolve().parents[2] / "web" / "dist"
 
 
 class Settings(BaseSettings):
@@ -16,6 +17,7 @@ class Settings(BaseSettings):
     session_secret: str | None = None
     session_cookie_secure: bool = False
     config_dir: str = str(DEFAULT_CONFIG_DIR)
+    web_dir: str = str(DEFAULT_WEB_DIR)
     llm_provider: Literal["gemini", "claude", "fake"] = "fake"
     gemini_api_key: str | None = None
     gemini_model: str = "gemini-3.8-flash"

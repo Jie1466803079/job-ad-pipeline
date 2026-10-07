@@ -1,8 +1,11 @@
 """FastAPI application factory."""
 
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.responses import PlainTextResponse
+from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
 from jobpipe import db, repo
@@ -47,5 +50,14 @@ def create_app(settings: Settings | None = None, extractor: Extractor | None = N
     @app.get("/health")
     def health() -> dict:
         return {"status": "ok"}
+
+    web_dir = Path(settings.web_dir)
+    if (web_dir / "index.html").is_file():
+        app.mount("/", StaticFiles(directory=web_dir, html=True), name="page")
+    else:
+        @app.get("/", include_in_schema=False)
+        def page_not_built() -> PlainTextResponse:
+            return PlainTextResponse("The review page is not built. Run `make web`, then restart the API.",
+                                     status_code=404)
 
     return app

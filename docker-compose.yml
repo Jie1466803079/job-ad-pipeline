@@ -17,7 +17,9 @@ services:
       retries: 20
 
   api:
-    build: ./api
+    build:
+      context: .
+      dockerfile: api/Dockerfile
     env_file: .env
     environment:
       DATABASE_URL: postgresql://jobpipe:${POSTGRES_PASSWORD:-jobpipe}@db:5432/jobpipe

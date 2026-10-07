@@ -99,7 +99,7 @@ SESSION_SECRET = "test-session-secret-" + "x" * 32
 def make_settings(database_url: str, config_dir: Path, **overrides) -> Settings:
     """Settings for an app under test. Keyword arguments replace any value."""
     values = {"database_url": database_url, "machine_api_key": "test-key", "session_secret": SESSION_SECRET,
-              "config_dir": str(config_dir), "llm_provider": "fake"}
+              "config_dir": str(config_dir), "llm_provider": "fake", "web_dir": str(config_dir / "no-web-build")}
     return Settings(**(values | overrides))
 
 
