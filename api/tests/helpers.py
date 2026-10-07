@@ -14,6 +14,7 @@ from jobpipe.llm.schema import (
     not_stated_payload,
 )
 from jobpipe.models import BoardFields, Posting
+from jobpipe.settings import Settings
 from jobpipe.sources.common import make_posting
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -84,3 +85,13 @@ SAMPLE_AD = (
     "Applications close 31 October 2026.\n"
     "Strong Python skills are essential."
 )
+
+
+SESSION_SECRET = "test-session-secret-" + "x" * 32
+
+
+def make_settings(database_url: str, config_dir: Path, **overrides) -> Settings:
+    """Settings for an app under test. Keyword arguments replace any value."""
+    values = {"database_url": database_url, "machine_api_key": "test-key", "session_secret": SESSION_SECRET,
+              "config_dir": str(config_dir), "llm_provider": "fake"}
+    return Settings(**(values | overrides))

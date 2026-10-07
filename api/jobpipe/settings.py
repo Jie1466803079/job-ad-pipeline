@@ -13,6 +13,8 @@ class Settings(BaseSettings):
 
     database_url: str = "postgresql://jobpipe:jobpipe@127.0.0.1:5433/jobpipe"
     machine_api_key: str | None = None
+    session_secret: str | None = None
+    session_cookie_secure: bool = False
     config_dir: str = str(DEFAULT_CONFIG_DIR)
     llm_provider: Literal["gemini", "claude", "fake"] = "fake"
     gemini_api_key: str | None = None
