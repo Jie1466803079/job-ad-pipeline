@@ -1,7 +1,7 @@
 VENV := api/.venv
 PY := $(VENV)/bin/python
 
-.PHONY: venv test lint db down up ingest-once smoke user
+.PHONY: venv test lint db down up ingest-once smoke user web web-test web-dev
 
 venv:
 	python3 -m venv $(VENV)
@@ -31,3 +31,12 @@ smoke:
 
 user:
 	docker compose exec api python -m jobpipe.create_user "$(USERNAME)"
+
+web:
+	cd web && npm ci && npm run build
+
+web-test:
+	cd web && npm run typecheck && npm test
+
+web-dev:
+	cd web && npm run dev
