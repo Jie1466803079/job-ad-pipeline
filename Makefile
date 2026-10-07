@@ -1,7 +1,7 @@
 VENV := api/.venv
 PY := $(VENV)/bin/python
 
-.PHONY: venv test lint db down up ingest-once smoke
+.PHONY: venv test lint db down up ingest-once smoke user
 
 venv:
 	python3 -m venv $(VENV)
@@ -28,3 +28,6 @@ ingest-once:
 
 smoke:
 	set -a; . ./.env; set +a; $(PY) -m jobpipe.llm.smoke --provider $(PROVIDER)
+
+user:
+	docker compose exec api python -m jobpipe.create_user "$(USERNAME)"

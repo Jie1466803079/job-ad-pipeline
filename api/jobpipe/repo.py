@@ -182,3 +182,39 @@ def digest(conn: Connection, since: datetime, today: date) -> dict:
                         (since,)).fetchone()["usd"]
     return {"tracked": tracked, "closing_soon": closing_soon, "review_count": review_count,
             "counts": counts, "llm_cost_usd": float(cost)}
+
+
+def get_user(conn: Connection, username: str) -> dict | None:
+    return conn.execute("""SELECT id, username, password_hash, failed_logins, locked_until FROM users
+                           WHERE username = %s""", (username,)).fetchone()
+
+
+def save_user(conn: Connection, username: str, password_hash: str) -> bool:
+    """Create the user, or set a new password and clear any lockout. Returns True when the user is new."""
+    existing = get_user(conn, username)
+    if existing:
+        conn.execute("UPDATE users SET password_hash = %s, failed_logins = 0, locked_until = NULL WHERE id = %s",
+                     (password_hash, existing["id"]))
+        return False
+    conn.execute("INSERT INTO users (username, password_hash) VALUES (%s, %s)", (username, password_hash))
+    return True
+
+
+def record_failed_login(conn: Connection, user_id: int, max_failed: int, lock_until: datetime) -> datetime | None:
+    """Count a failed login. The attempt that reaches max_failed locks the account and restarts the count.
+
+    Returns locked_until, which can be an old lock that has already ended.
+    """
+    row = conn.execute(
+        """UPDATE users
+           SET failed_logins = CASE WHEN failed_logins + 1 >= %(max)s THEN 0 ELSE failed_logins + 1 END,
+               locked_until = CASE WHEN failed_logins + 1 >= %(max)s THEN %(until)s ELSE locked_until END
+           WHERE id = %(id)s
+           RETURNING locked_until""",
+        {"max": max_failed, "until": lock_until, "id": user_id},
+    ).fetchone()
+    return row["locked_until"]
+
+
+def clear_failed_logins(conn: Connection, user_id: int) -> None:
+    conn.execute("UPDATE users SET failed_logins = 0, locked_until = NULL WHERE id = %s", (user_id,))

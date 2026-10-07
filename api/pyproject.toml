@@ -20,6 +20,8 @@ dependencies = [
     "tzdata>=2024.1",
     "google-genai>=2.28",
     "anthropic>=1.11",
+    "argon2-cffi>=25.1",
+    "itsdangerous>=2.2",
 ]
 
 [project.optional-dependencies]

@@ -7,7 +7,7 @@ from jobpipe import db
 
 TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL",
                                    "postgresql://jobpipe:jobpipe@127.0.0.1:5433/jobpipe_test")
-TABLES = ["ingest_calls", "llm_calls", "extractions", "postings", "companies"]
+TABLES = ["reviews", "users", "ingest_calls", "llm_calls", "extractions", "postings", "companies"]
 
 
 @pytest.fixture(scope="session")
