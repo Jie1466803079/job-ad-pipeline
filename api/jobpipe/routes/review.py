@@ -1,10 +1,13 @@
 """Routes for the review page. Every request needs a logged-in session."""
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import date
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from psycopg import Connection
+from psycopg.errors import LockNotAvailable
 from pydantic import BaseModel
 
 from jobpipe import repo, review
@@ -12,6 +15,10 @@ from jobpipe.clock import sydney_midnight, sydney_today
 from jobpipe.deps import get_conn, require_user
 
 router = APIRouter(prefix="/api", dependencies=[Depends(require_user)])
+
+# The daily ingest holds an ad's row while it waits for the LLM, for up to about 100 seconds. A write to
+# that ad waits this long at most, then gets a 409 instead of leaving the page hanging.
+LOCK_TIMEOUT = "3s"
 
 
 class DecisionRequest(BaseModel):
@@ -44,10 +51,11 @@ def correct_fields(posting_id: int, body: review.FieldEdits, username: str = Dep
     changes = body.changes()
     if not changes:
         raise HTTPException(status_code=422, detail="Send at least one field to correct.")
-    repo.insert_review(conn, posting_id, extraction["id"], username, "edit", edited_fields=changes)
-    if "closing_date" in changes:
-        repo.set_closing_date(conn, posting_id, _closing_date(changes["closing_date"], posting["board"]))
-    conn.commit()
+    with _short_lock_wait(conn):
+        repo.insert_review(conn, posting_id, extraction["id"], username, "edit", edited_fields=changes)
+        if "closing_date" in changes:
+            repo.set_closing_date(conn, posting_id, _closing_date(changes["closing_date"], posting["board"]))
+        conn.commit()
     return _detail(conn, posting_id)
 
 
@@ -98,13 +106,15 @@ def _detail(conn: Connection, posting_id: int) -> dict:
 
 def _change_status(conn: Connection, posting: dict, username: str, action: str, target: str) -> None:
     """Set a status a person chose and record it. Refused when the status changed since it was read."""
-    if not repo.decide_status(conn, posting["id"], posting["status"], target):
-        conn.rollback()
-        raise HTTPException(status_code=409, detail="The ad changed while you were looking at it. Reload it.")
-    extraction = repo.current_extraction(conn, posting["id"])
-    repo.insert_review(conn, posting["id"], extraction["id"] if extraction else None, username, action,
-                       from_status=posting["status"], to_status=target)
-    conn.commit()
+    with _short_lock_wait(conn):
+        if not repo.decide_status(conn, posting["id"], posting["status"], target):
+            conn.rollback()
+            raise HTTPException(status_code=409,
+                                detail="The ad changed while you were looking at it. Reload it.")
+        extraction = repo.current_extraction(conn, posting["id"])
+        repo.insert_review(conn, posting["id"], extraction["id"] if extraction else None, username, action,
+                           from_status=posting["status"], to_status=target)
+        conn.commit()
 
 
 def _closing_date(value: str, board: dict) -> date | None:
@@ -112,3 +122,15 @@ def _closing_date(value: str, board: dict) -> date | None:
     if value != "not_stated":
         return date.fromisoformat(value)
     return date.fromisoformat(board["deadline"]) if board.get("deadline") else None
+
+
+@contextmanager
+def _short_lock_wait(conn: Connection) -> Iterator[None]:
+    """Writes inside wait at most LOCK_TIMEOUT for the ad's row, then the request gets a 409."""
+    conn.execute(f"SET lock_timeout = '{LOCK_TIMEOUT}'")
+    try:
+        yield
+    except LockNotAvailable as exc:
+        conn.rollback()
+        raise HTTPException(status_code=409,
+                            detail="An ingest is updating this ad right now. Try again in a minute.") from exc

@@ -1,3 +1,5 @@
+import threading
+import time
 from datetime import date
 
 import pytest
@@ -12,10 +14,11 @@ from helpers import (
     store_ad,
     write_test_config,
 )
-from jobpipe import auth, repo
+from jobpipe import auth, db, repo
 from jobpipe.app import create_app
 from jobpipe.llm.fake import FakeExtractor
 from jobpipe.llm.schema import LocationsField, WorkRightsField
+from jobpipe.routes import review as review_routes
 
 PASSWORD = "correct horse battery"
 # A quote that is not in the ad, so the work_rights check fails and the ad goes to review.
@@ -233,3 +236,27 @@ def test_stats_count_tabs_today_and_this_month(client, conn):
     assert stats["month"] == {"extracted": 2, "auto_routed": 1, "llm_cost_usd": 0.0125}
     client.post("/auth/logout")
     assert client.get("/api/stats").status_code == 401
+
+
+def test_writes_to_an_ad_that_an_ingest_is_updating_fail_fast(client, conn, migrated_db, monkeypatch):
+    """The daily ingest holds an ad's row while it waits for the LLM (up to about 100 s). Writes must not hang."""
+    posting_id = store_ad(conn, posting_with("Some text.", source_id="2"), UNVERIFIED)
+    monkeypatch.setattr(review_routes, "LOCK_TIMEOUT", "200ms")
+    ingest = db.connect(migrated_db)
+    ingest.execute("UPDATE postings SET last_seen_at = now() WHERE id = %s", (posting_id,))
+    release = threading.Timer(3, ingest.rollback)  # without a lock timeout the requests wait this long
+    release.start()
+    try:
+        started = time.monotonic()
+        decision = client.post(f"/api/postings/{posting_id}/decision", json={"decision": "approve"})
+        correction = client.patch(f"/api/postings/{posting_id}/fields", json={"closing_date": "2026-11-14"})
+        elapsed = time.monotonic() - started
+    finally:
+        release.cancel()
+        ingest.rollback()
+        ingest.close()
+    assert (decision.status_code, correction.status_code) == (409, 409)
+    assert "ingest" in decision.json()["detail"]
+    assert elapsed < 2
+    assert repo.get_posting(conn, posting_id)["status"] == "review"
+    assert conn.execute("SELECT count(*) AS n FROM reviews").fetchone()["n"] == 0
