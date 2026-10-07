@@ -241,6 +241,24 @@ def delete_old_text(conn: Connection, older_than: timedelta = timedelta(days=30)
     return cursor.rowcount
 
 
+def ingest_totals(conn: Connection, since: datetime) -> dict:
+    """Ingest counts summed over the calls since a moment."""
+    return conn.execute(
+        """SELECT coalesce(sum(fetched), 0) AS fetched, coalesce(sum(created), 0) AS created,
+                  coalesce(sum(skipped), 0) AS skipped, coalesce(sum(tracked), 0) AS tracked,
+                  coalesce(sum(review), 0) AS review, coalesce(sum(ineligible), 0) AS ineligible,
+                  coalesce(sum(closed), 0) AS closed, coalesce(sum(failed), 0) AS failed
+           FROM ingest_calls WHERE started_at >= %s""",
+        (since,),
+    ).fetchone()
+
+
+def llm_cost_since(conn: Connection, since: datetime) -> float:
+    usd = conn.execute("SELECT coalesce(sum(cost_usd), 0) AS usd FROM llm_calls WHERE created_at >= %s",
+                       (since,)).fetchone()["usd"]
+    return float(usd)
+
+
 def digest(conn: Connection, since: datetime, today: date) -> dict:
     tracked = conn.execute(
         """SELECT p.id, c.name AS company, p.title, p.url, p.closing_date, e.fit
@@ -262,18 +280,8 @@ def digest(conn: Connection, since: datetime, today: date) -> dict:
     ).fetchall()
     review_count = conn.execute(
         "SELECT count(*) AS n FROM postings WHERE status = 'review' AND closed_at IS NULL").fetchone()["n"]
-    counts = conn.execute(
-        """SELECT coalesce(sum(fetched), 0) AS fetched, coalesce(sum(created), 0) AS created,
-                  coalesce(sum(skipped), 0) AS skipped, coalesce(sum(tracked), 0) AS tracked,
-                  coalesce(sum(review), 0) AS review, coalesce(sum(ineligible), 0) AS ineligible,
-                  coalesce(sum(closed), 0) AS closed, coalesce(sum(failed), 0) AS failed
-           FROM ingest_calls WHERE started_at >= %s""",
-        (since,),
-    ).fetchone()
-    cost = conn.execute("SELECT coalesce(sum(cost_usd), 0) AS usd FROM llm_calls WHERE created_at >= %s",
-                        (since,)).fetchone()["usd"]
     return {"tracked": tracked, "closing_soon": closing_soon, "review_count": review_count,
-            "counts": counts, "llm_cost_usd": float(cost)}
+            "counts": ingest_totals(conn, since), "llm_cost_usd": llm_cost_since(conn, since)}
 
 
 def get_user(conn: Connection, username: str) -> dict | None:
@@ -310,3 +318,18 @@ def record_failed_login(conn: Connection, user_id: int, max_failed: int, lock_un
 
 def clear_failed_logins(conn: Connection, user_id: int) -> None:
     conn.execute("UPDATE users SET failed_logins = 0, locked_until = NULL WHERE id = %s", (user_id,))
+
+
+def review_stats(conn: Connection, day_start: datetime, month_start: datetime) -> dict:
+    """Tab sizes, today's ingest counts, and this month's extractions and LLM cost."""
+    tab_counts = ", ".join(f"count(*) FILTER (WHERE {where}) AS {tab}" for tab, (where, _) in QUEUE_TABS.items())
+    month = conn.execute(
+        """SELECT count(*) AS extracted, count(*) FILTER (WHERE route <> 'review') AS auto_routed
+           FROM extractions WHERE created_at >= %s""",
+        (month_start,),
+    ).fetchone()
+    return {
+        "tabs": conn.execute(f"SELECT {tab_counts} FROM postings p").fetchone(),
+        "today": ingest_totals(conn, day_start),
+        "month": {**month, "llm_cost_usd": llm_cost_since(conn, month_start)},
+    }

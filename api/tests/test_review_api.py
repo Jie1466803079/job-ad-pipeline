@@ -214,3 +214,22 @@ def test_application_status_needs_a_tracked_ad(client, conn):
     assert client.patch(f"/api/postings/{tracked}/status", json={"status": "dismissed"}).status_code == 422
     assert client.patch(f"/api/postings/{tracked}/status", json={"status": "tracked"}).status_code == 200
     assert conn.execute("SELECT count(*) AS n FROM reviews").fetchone()["n"] == 4
+
+
+def test_stats_count_tabs_today_and_this_month(client, conn):
+    store_ad(conn, greenhouse_posting(), good_greenhouse_payload())
+    store_ad(conn, posting_with("Some text.", source_id="2"), UNVERIFIED)
+    store_ad(conn, posting_with("Sales.", title="Account Executive", source_id="3"), None)
+    company_id = repo.ensure_company(conn, "greenhouse", "examplegh", name="Example GH")["id"]
+    conn.execute("""INSERT INTO ingest_calls (company_id, started_at, fetched, created, tracked, review)
+                    VALUES (%s, now(), 5, 3, 1, 1), (%s, now() - interval '40 days', 9, 9, 9, 9)""",
+                 (company_id, company_id))
+    conn.execute("INSERT INTO llm_calls (provider, model, outcome, cost_usd) VALUES ('fake', 'fake-1', 'ok', 0.0125)")
+    conn.commit()
+    stats = client.get("/api/stats").json()
+    assert stats["tabs"] == {"review": 1, "tracked": 1, "ineligible": 0, "applied": 0, "closed": 0,
+                             "skipped": 1, "dismissed": 0}
+    assert (stats["today"]["fetched"], stats["today"]["created"], stats["today"]["tracked"]) == (5, 3, 1)
+    assert stats["month"] == {"extracted": 2, "auto_routed": 1, "llm_cost_usd": 0.0125}
+    client.post("/auth/logout")
+    assert client.get("/api/stats").status_code == 401

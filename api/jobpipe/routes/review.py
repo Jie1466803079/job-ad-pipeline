@@ -8,6 +8,7 @@ from psycopg import Connection
 from pydantic import BaseModel
 
 from jobpipe import repo, review
+from jobpipe.clock import sydney_midnight, sydney_today
 from jobpipe.deps import get_conn, require_user
 
 router = APIRouter(prefix="/api", dependencies=[Depends(require_user)])
@@ -73,6 +74,13 @@ def set_application_status(posting_id: int, body: StatusRequest, username: str =
     if body.status != posting["status"]:
         _change_status(conn, posting, username, "set_status", body.status)
     return _detail(conn, posting_id)
+
+
+@router.get("/stats")
+def stats(conn: Connection = Depends(get_conn)) -> dict:
+    today = sydney_today()
+    return repo.review_stats(conn, day_start=sydney_midnight(today),
+                             month_start=sydney_midnight(today.replace(day=1)))
 
 
 def _posting(conn: Connection, posting_id: int) -> dict:
