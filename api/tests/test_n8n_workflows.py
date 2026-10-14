@@ -157,3 +157,14 @@ def test_submit_link_answers_every_outcome():
     assert targets(link, "Job in the response?") == [["Respond with result"], ["Respond not on board"]]
     for name in ["Resolve link", "Fetch posting"]:  # their 4xx answers are outcomes, not failures
         assert node(link, name)["parameters"]["options"]["response"]["response"]["neverError"] is True
+
+
+def test_an_intake_api_error_on_the_link_check_fails_the_run():
+    """Only 200, 400 and 422 are answers for the person. Any other status from intake-api (a 500, or a 401
+    after MACHINE_API_KEY changes) fails the run, so the caller gets 500 and the error workflow sends an alert."""
+    link = WORKFLOWS["submit-link"]
+    assert targets(link, "Resolve link") == [["Link check answered?"]]
+    check = node(link, "Link check answered?")["parameters"]["conditions"]["conditions"][0]["leftValue"]
+    assert check == "={{ [200, 400, 422].includes($json.statusCode) }}"
+    assert targets(link, "Link check answered?") == [["Link allowed?"], ["Fail on an intake-api error"]]
+    assert node(link, "Fail on an intake-api error")["type"] == "n8n-nodes-base.stopAndError"

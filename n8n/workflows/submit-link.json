@@ -89,6 +89,54 @@
           },
           "conditions": [
             {
+              "id": "1a2b3c40-0000-4000-8000-0000000000c4",
+              "leftValue": "={{ [200, 400, 422].includes($json.statusCode) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "1a2b3c40-0000-4000-8000-000000000012",
+      "name": "Link check answered?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        440,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "errorType": "errorMessage",
+        "errorMessage": "={{ 'intake-api answered HTTP ' + $json.statusCode + ' to the link check' }}"
+      },
+      "id": "1a2b3c40-0000-4000-8000-000000000013",
+      "name": "Fail on an intake-api error",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        660,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
               "id": "1a2b3c40-0000-4000-8000-0000000000c1",
               "leftValue": "={{ $json.statusCode === 200 && $json.body.allowed === true }}",
               "rightValue": "",
@@ -108,7 +156,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        440,
+        660,
         100
       ]
     },
@@ -125,7 +173,7 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.5,
       "position": [
-        660,
+        880,
         300
       ]
     },
@@ -148,7 +196,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.5,
       "position": [
-        660,
+        880,
         0
       ],
       "retryOnFail": true,
@@ -185,7 +233,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        880,
+        1100,
         0
       ]
     },
@@ -202,7 +250,7 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.5,
       "position": [
-        1100,
+        1320,
         200
       ]
     },
@@ -225,7 +273,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.5,
       "position": [
-        1100,
+        1320,
         -100
       ],
       "credentials": {
@@ -268,7 +316,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        1320,
+        1540,
         -100
       ]
     },
@@ -284,7 +332,7 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.5,
       "position": [
-        1540,
+        1760,
         -200
       ]
     },
@@ -301,7 +349,7 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.5,
       "position": [
-        1540,
+        1760,
         0
       ]
     }
@@ -322,7 +370,25 @@
       "main": [
         [
           {
+            "node": "Link check answered?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Link check answered?": {
+      "main": [
+        [
+          {
             "node": "Link allowed?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Fail on an intake-api error",
             "type": "main",
             "index": 0
           }
