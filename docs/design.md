@@ -52,7 +52,7 @@ Review. The reviewer logs into the review page, opens an ad from the queue, sees
 quote highlighted next to the extracted value and its check results, corrects values if needed, and
 approves or dismisses the ad. Tracked ads can then move through applied, interview, offer or rejected.
 
-Digest. At 08:00, n8n asks the service for the digest and emails it.
+Digest. At 08:00, n8n asks the service for the digest email and sends it.
 
 Maintenance. At 02:00, n8n asks the service to close ads whose closing date has passed and to delete ad
 text 30 days after an ad closes.
@@ -85,11 +85,11 @@ flowchart LR
 
 | Part | Built with | Responsibility |
 |---|---|---|
-| n8n | n8n, self-hosted Docker image, version pinned | Schedules, webhook, calls to job-board APIs, calls to intake-api, emails, error alerts |
+| n8n | n8n 2.42.5, self-hosted Docker image | Schedules, webhook, calls to job-board APIs, calls to intake-api, emails, error alerts |
 | intake-api | Python 3.12, FastAPI, psycopg 3 | Standardising, filtering, LLM extraction, checks, routing, storage, login, review API |
 | Review page | React, TypeScript, Vite | Queue, ad detail with highlighted quotes, edits and decisions. Built to static files and served by intake-api |
-| Postgres | Postgres 16 | Two databases: `jobpipe` for the service and `n8n` for n8n's own data |
-| Mailpit | Mailpit | Catches outgoing email locally so nothing real is sent during development |
+| Postgres | Postgres 16 | Two databases: `jobpipe` for the service and `n8n` for n8n's own data. n8n 2.42 supports 16 in compatibility mode and prints a warning |
+| Mailpit | Mailpit 1.31 | Catches outgoing email locally so nothing real is sent; the digest and alerts are read at http://127.0.0.1:8025 |
 
 Why the split. n8n owns integration steps that are easy to see and change: what runs when, which APIs are
 called, where emails go. The Python service owns the rules that have to be right and tested: what counts as
@@ -248,16 +248,26 @@ but no longer apply. Decisions and status changes record `from_status` and `to_s
 
 ## 8. n8n workflows
 
-Workflows are exported as JSON into `n8n/workflows/` and imported by the setup script. Credentials are
-created by the setup script from `.env`.
+Workflows are kept as JSON in `n8n/workflows/`, with fixed ids. `make n8n-setup` (`scripts/n8n-setup.sh`)
+imports the credentials, which `python -m jobpipe.n8n_credentials` builds from `.env` inside the api
+container and pipes straight into n8n, then imports the workflows and publishes each one. n8n unpublishes a
+workflow whenever it is imported, so the script always publishes again, and the error workflow must be
+published too or n8n never calls it. The script is safe to run again after a workflow or a secret changes.
 
 | Workflow | Trigger | Steps |
 |---|---|---|
-| daily-ingest | Schedule, 07:00 Australia/Sydney | Get companies from intake-api. For each company, call its board API (Switch by source), then post the result to `/machine/ingest` with `complete: true`. HTTP nodes retry 3 times. |
-| submit-link | Webhook `POST /webhook/job-link`, header auth | Post the link to `/machine/links/resolve`. If allowed, fetch the returned API URL, post to `/machine/ingest` with `complete: false` and `only_source_id` set to the job id, and respond with the outcome. Otherwise respond 400. |
-| daily-digest | Schedule, 08:00 | Get `/machine/digest` and send it by email. |
+| daily-ingest | Schedule, 07:00 Australia/Sydney | Get companies from intake-api, each with its board API address. For each company, fetch the board and post the result to `/machine/ingest` with `complete: true`. A board that cannot be fetched is noted and the loop goes on; at the end the run fails with a message naming each such board, so an alert is sent. A failing call to intake-api stops the run. |
+| submit-link | Webhook `POST /webhook/job-link`, header `X-Webhook-Secret` | Post the link to `/machine/links/resolve`. If allowed, fetch the returned API URL, post to `/machine/ingest` with `complete: false` and `only_source_id` set to the job id, and respond 200 with the outcome. Respond 400 to a link that is not allowed or a body without `url`, 404 when the job is not on the board any more, and 502 when the board answers with another error. Without the right secret, n8n answers 403. |
+| daily-digest | Schedule, 08:00 | Get `/machine/digest/email` and send it to `DIGEST_TO`. |
 | maintenance | Schedule, 02:00 | Post to `/machine/maintenance` (close past-deadline ads, delete old text). |
-| error-alert | Error Trigger | Email the workflow name, failing node and error. Set as the error workflow for the four above. |
+| error-alert | Error Trigger | Email `ALERT_TO` the workflow name, failing node, error and a link to the run. Set as the error workflow for the four above. |
+
+HTTP nodes retry: three tries, five seconds apart (n8n waits at most five seconds between tries). Calls
+to `/machine/ingest` wait up to two hours, since an LLM call can take 100 seconds per new ad and n8n's
+default timeout is five minutes. Each scheduled workflow also has a manual trigger, so it can be run on
+demand with `docker compose run --rm --no-deps -T n8n execute --id=<workflow id>`. For such a run of
+daily-ingest, `INGEST_COMPANIES` (names separated by commas) picks some companies; `make demo` uses it. A run
+started this way reports a failure in the terminal and does not send an alert.
 
 ## 9. intake-api endpoints
 
@@ -265,10 +275,11 @@ Machine routes need the `X-API-Key` header. They are called only by n8n over the
 
 | Method and path | Purpose |
 |---|---|
-| `GET /machine/companies` | Active companies with source and slug |
+| `GET /machine/companies` | Active companies with source, slug and the board API address (`api_url`). `?names=A,B` picks some by name; a name that is not an active company gets 422 |
 | `POST /machine/ingest` | Body: company id, source, raw board response, `complete`, optional `only_source_id`. Runs section 6 for each ad, or only for the named ad (used for Ashby links, where the API returns the whole board). When `complete` is true, ads of that company not in the batch get `closed_at`. Returns per-ad outcomes and counts. |
 | `POST /machine/links/resolve` | Body: a URL. Returns the source, company id, job id and the API URL to fetch, or a rejection reason. A company not yet in the table is added with `active = false`, so it is not polled daily. |
-| `GET /machine/digest` | Ads tracked in the last 24 hours, ads closing within 7 days, review queue size, the last 24 hours' counts and LLM cost |
+| `GET /machine/digest` | Ads tracked in the last 24 hours (by the pipeline, or by a person on the review page), ads closing within 7 days, review queue size, the last 24 hours' counts and LLM cost |
+| `GET /machine/digest/email` | The digest as an email: subject, plain text and HTML, with links to the review page (`REVIEW_URL`). n8n sends it as it is |
 | `POST /machine/maintenance` | Applies the closing and text-deletion rules; returns counts |
 
 Review routes need a logged-in session.
@@ -301,7 +312,12 @@ TypeScript side turns positions into highlighted spans, merging overlaps. That f
 
 ## 11. Security
 
-- Webhook: n8n header auth with a secret from `.env`.
+- Webhook: n8n header auth. The `X-Webhook-Secret` header must hold `WEBHOOK_SECRET` from `.env`.
+- n8n: its environment is listed variable by variable in docker-compose.yml and never loads `.env`, so it
+  holds no API keys: only n8n's settings, its database password, its encryption key and three email
+  addresses. The workflows read those addresses with `$env`, so `N8N_BLOCK_ENV_ACCESS_IN_NODE` is false.
+  The API key and the webhook secret live only in n8n's encrypted credentials. The n8n owner account is
+  created on the first visit to the n8n page.
 - Machine routes: an API key compared in constant time.
 - Review login: argon2 password hashes, a signed session cookie that is httpOnly, SameSite=Strict and
   Secure when served over HTTPS, and a 15-minute lockout after 5 failed logins. The account is created with
@@ -324,7 +340,9 @@ TypeScript side turns positions into highlighted spans, merging overlaps. That f
 - LLM errors: rate limits and server errors are retried with backoff (3 retries, 60-second timeout), using
   the SDK's own retry settings where it has them. An ad that still fails goes to review with
   `extraction_failed`.
-- n8n retries HTTP calls, and the error workflow emails any workflow failure.
+- n8n retries HTTP calls (three tries, five seconds apart), and the error workflow emails any failure of a
+  scheduled or webhook run. A company whose board cannot be fetched does not stop the others; the run then
+  fails at the end and the alert names the board.
 - Each ingest call records its counts, and each LLM call records tokens and cost. The digest and the
   stats endpoint read from these.
 - Retention: ads not returned by a complete board fetch, or past their closing date, get `closed_at`.
@@ -380,8 +398,11 @@ Commands: `python -m jobpipe.eval.sample` builds the snapshots and the label tem
 - TypeScript: `tsc --noEmit`, plus Vitest tests for the highlighting function.
 - Lint: ruff for Python, the TypeScript compiler for the page.
 - GitHub Actions runs all of the above on every push. CI never calls an LLM and holds no API keys.
-- `make demo` starts the stack, runs one ingest for two companies, and checks that rows exist and the
-  review page responds.
+- `make demo` creates `.env` if there is none (`make env`), starts the stack, sets up n8n, runs daily-ingest
+  in n8n for two companies (`DEMO_COMPANIES`), and checks that ingest rows exist, the review page responds,
+  the digest email reaches Mailpit and the webhook refuses requests without the secret. With
+  `LLM_PROVIDER=fake` it needs no API key.
+- pytest also checks the workflow files and docker-compose.yml, since CI does not run n8n.
 
 ## 15. Repository layout
 
@@ -410,7 +431,11 @@ job-ad-pipeline/
 
 - `.env`: database URLs, `LLM_PROVIDER` (`gemini`, `claude` or `fake`), `GEMINI_MODEL` (default
   `gemini-3.8-flash`), `CLAUDE_MODEL` (default `claude-opus-5-5`), `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`,
-  `MACHINE_API_KEY`, `WEBHOOK_SECRET`, `SESSION_SECRET`, SMTP settings, digest recipient.
+  `MACHINE_API_KEY`, `WEBHOOK_SECRET`, `SESSION_SECRET`, `N8N_ENCRYPTION_KEY`, SMTP settings (`SMTP_HOST`,
+  `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_SECURE`; Mailpit by default), `MAIL_FROM`, `DIGEST_TO`,
+  `ALERT_TO` and `REVIEW_URL`. `make env` creates `.env` from `.env.example` with random secrets, or adds
+  the keys an existing `.env` is missing; it never changes a value that is set. `N8N_ENCRYPTION_KEY` must
+  not change once n8n has started: n8n keeps a copy in its data volume and refuses to start when they differ.
 - `config/companies.yaml`: name, source, slug and active flag for each company.
 - `config/filters.yaml`: location terms and title include and exclude keywords.
 - `config/profile.yaml`: skills and synonyms for the fit score.
@@ -429,4 +454,4 @@ job-ad-pipeline/
 
 - The final company list.
 - Gemini free tier or paid tier.
-- The n8n image tag, fixed when the build starts.
+- Moving Postgres to 17, which n8n 2.42 prefers. It needs a dump and restore of the data.
