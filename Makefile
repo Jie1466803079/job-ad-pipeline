@@ -1,6 +1,6 @@
 VENV := api/.venv
 PY := $(VENV)/bin/python
-DEMO_COMPANIES ?= Brighte,Octopus Deploy
+DEMO_COMPANIES ?= Dovetail,Mable
 
 .PHONY: venv test lint db down up ingest-once smoke env n8n-setup demo user web web-test web-dev
 

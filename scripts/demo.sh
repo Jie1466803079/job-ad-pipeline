@@ -5,7 +5,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-COMPANIES=${DEMO_COMPANIES:-Brighte,Octopus Deploy}
+COMPANIES=${DEMO_COMPANIES:-Dovetail,Mable}
 MAILPIT=http://127.0.0.1:8025
 
 sql() { docker compose exec -T db psql -U jobpipe -d jobpipe -Atc "$1"; }
