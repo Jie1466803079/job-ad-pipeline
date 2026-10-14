@@ -1,0 +1,302 @@
+{
+  "id": "wfDailyIngest001",
+  "name": "daily-ingest",
+  "active": false,
+  "pinData": {},
+  "tags": [],
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Australia/Sydney",
+    "saveManualExecutions": true,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveExecutionProgress": false,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": "wfErrorAlert0001"
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 7 * * *"
+            }
+          ]
+        }
+      },
+      "id": "0f3e1a10-0000-4000-8000-000000000001",
+      "name": "Every day 07:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "0f3e1a10-0000-4000-8000-000000000002",
+      "name": "Run now",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://api:8000/machine/companies",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "names",
+              "value": "={{ $env.INGEST_COMPANIES ?? '' }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "0f3e1a10-0000-4000-8000-000000000003",
+      "name": "Get companies",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        220,
+        100
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "jobpipeApiKey001",
+          "name": "intake-api key"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "0f3e1a10-0000-4000-8000-000000000004",
+      "name": "Loop over companies",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        440,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.api_url }}",
+        "options": {
+          "timeout": 120000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "0f3e1a10-0000-4000-8000-000000000005",
+      "name": "Fetch board",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        660,
+        200
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://api:8000/machine/ingest",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ { company_id: $('Loop over companies').item.json.id, source: $('Loop over companies').item.json.source, payload: $json.body, complete: true } }}",
+        "options": {
+          "timeout": 7200000
+        }
+      },
+      "id": "0f3e1a10-0000-4000-8000-000000000006",
+      "name": "Post to ingest",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        880,
+        100
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "jobpipeApiKey001",
+          "name": "intake-api key"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "0f3e1a10-0000-4000-8000-0000000000a1",
+              "name": "company",
+              "value": "={{ $('Loop over companies').item.json.name }}",
+              "type": "string"
+            },
+            {
+              "id": "0f3e1a10-0000-4000-8000-0000000000a2",
+              "name": "board_failed",
+              "value": true,
+              "type": "boolean"
+            },
+            {
+              "id": "0f3e1a10-0000-4000-8000-0000000000a3",
+              "name": "error",
+              "value": "={{ typeof $json.error === 'string' ? $json.error : ($json.error?.message ?? 'unknown error') }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": false,
+        "options": {}
+      },
+      "id": "0f3e1a10-0000-4000-8000-000000000007",
+      "name": "Note failed board",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        880,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Every company has been through the loop. Fail the run when a board could not be fetched,\n// so the error workflow sends an alert that names it.\nconst items = $input.all();\nconst failed = items.filter((item) => item.json.board_failed);\nif (failed.length > 0) {\n  const list = failed.map((item) => `${item.json.company} (${item.json.error})`).join('; ');\n  throw new Error(`${failed.length} of ${items.length} boards could not be fetched: ${list}`);\n}\nreturn [{ json: { companies: items.length } }];\n"
+      },
+      "id": "0f3e1a10-0000-4000-8000-000000000008",
+      "name": "Fail if a board failed",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        -120
+      ]
+    }
+  ],
+  "connections": {
+    "Every day 07:00": {
+      "main": [
+        [
+          {
+            "node": "Get companies",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run now": {
+      "main": [
+        [
+          {
+            "node": "Get companies",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get companies": {
+      "main": [
+        [
+          {
+            "node": "Loop over companies",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop over companies": {
+      "main": [
+        [
+          {
+            "node": "Fail if a board failed",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Fetch board",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch board": {
+      "main": [
+        [
+          {
+            "node": "Post to ingest",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Note failed board",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Post to ingest": {
+      "main": [
+        [
+          {
+            "node": "Loop over companies",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Note failed board": {
+      "main": [
+        [
+          {
+            "node": "Loop over companies",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

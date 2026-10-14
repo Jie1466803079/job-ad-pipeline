@@ -1,0 +1,71 @@
+{
+  "id": "wfErrorAlert0001",
+  "name": "error-alert",
+  "active": false,
+  "pinData": {},
+  "tags": [],
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Australia/Sydney",
+    "saveManualExecutions": true,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveExecutionProgress": false,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "4e5f6070-0000-4000-8000-000000000001",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $env.MAIL_FROM }}",
+        "toEmail": "={{ $env.ALERT_TO }}",
+        "subject": "=n8n workflow failed: {{ $json.workflow.name }}",
+        "emailFormat": "text",
+        "text": "=Workflow: {{ $json.workflow.name }}\nFailed node: {{ $json.execution?.lastNodeExecuted ?? $json.trigger?.error?.node?.name ?? 'unknown' }}\nError: {{ $json.execution?.error?.message ?? $json.trigger?.error?.message ?? 'unknown' }}\nDetails: {{ $json.execution?.error?.description ?? $json.trigger?.error?.description ?? 'none' }}\nExecution: {{ $json.execution?.url ?? 'none, the trigger could not start' }}\nStarted by: {{ $json.execution?.mode ?? $json.trigger?.mode ?? 'unknown' }}\n",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "4e5f6070-0000-4000-8000-000000000002",
+      "name": "Send alert",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        220,
+        100
+      ],
+      "credentials": {
+        "smtp": {
+          "id": "jobpipeSmtp00001",
+          "name": "Outgoing email"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    }
+  ],
+  "connections": {
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Send alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
