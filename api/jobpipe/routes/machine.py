@@ -13,7 +13,7 @@ from jobpipe import repo
 from jobpipe.clock import sydney_today
 from jobpipe.deps import get_conn, require_api_key
 from jobpipe.pipeline import Pipeline, UnreadablePayload
-from jobpipe.sources.urls import LinkRejected, resolve_link
+from jobpipe.sources.urls import LinkRejected, board_api_url, resolve_link
 
 router = APIRouter(prefix="/machine", dependencies=[Depends(require_api_key)])
 
@@ -31,8 +31,15 @@ class ResolveRequest(BaseModel):
 
 
 @router.get("/companies")
-def companies(conn: Connection = Depends(get_conn)) -> list[dict]:
-    return repo.active_companies(conn)
+def companies(names: str = "", conn: Connection = Depends(get_conn)) -> list[dict]:
+    """Active companies, each with its board's API address. names (comma-separated) picks some of them."""
+    rows = repo.active_companies(conn)
+    wanted = {name.strip() for name in names.split(",") if name.strip()}
+    unknown = wanted - {row["name"] for row in rows}
+    if unknown:
+        raise HTTPException(status_code=422, detail=f"not active companies: {', '.join(sorted(unknown))}")
+    return [row | {"api_url": board_api_url(row["source"], row["slug"])}
+            for row in rows if not wanted or row["name"] in wanted]
 
 
 @router.post("/ingest")

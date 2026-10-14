@@ -1,9 +1,17 @@
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 from helpers import posting_with, write_test_config
-from jobpipe.configfiles import contains_term, load_companies, load_filters, load_prices, load_profile
+from jobpipe.configfiles import (
+    CompanyConfig,
+    contains_term,
+    load_companies,
+    load_filters,
+    load_prices,
+    load_profile,
+)
 from jobpipe.models import BoardFields
 from jobpipe.prefilter import prefilter
 
@@ -59,3 +67,10 @@ def test_repo_config_files_load():
     assert load_filters(REPO_CONFIG / "filters.yaml").title_include
     assert load_profile(REPO_CONFIG / "profile.yaml").has("PySpark")
     assert "gemini-3.8-flash" in load_prices(REPO_CONFIG / "prices.yaml")
+
+
+def test_a_company_slug_must_fit_the_board_address_templates():
+    assert CompanyConfig(name="Octopus", source="greenhouse", slug="octopus.deploy-2").slug == "octopus.deploy-2"
+    for slug in ["", "bad slug", "a/../b", "-dash-first"]:
+        with pytest.raises(ValidationError):
+            CompanyConfig(name="Bad", source="lever", slug=slug)

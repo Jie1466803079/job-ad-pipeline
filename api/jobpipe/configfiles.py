@@ -5,15 +5,16 @@ from pathlib import Path
 from typing import Literal
 
 import yaml
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
+from jobpipe.sources.urls import SLUG_RE
 from jobpipe.textutil import normalise_for_match
 
 
 class CompanyConfig(BaseModel):
     name: str
     source: Literal["greenhouse", "lever", "ashby"]
-    slug: str
+    slug: str = Field(pattern=SLUG_RE.pattern)  # the board API templates accept nothing else
     active: bool = True
 
 

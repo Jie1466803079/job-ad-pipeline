@@ -44,6 +44,33 @@ def test_companies_come_from_config(client):
     assert names == ["Example AB", "Example GH", "Example LV"]
 
 
+def test_companies_come_with_their_board_address(client):
+    by_name = {c["name"]: c for c in client.get("/machine/companies", headers=KEY).json()}
+    assert by_name["Example GH"]["api_url"] == "https://boards-api.greenhouse.io/v1/boards/examplegh/jobs?content=true"
+    assert by_name["Example LV"]["api_url"] == "https://api.lever.co/v0/postings/examplelv?mode=json"
+    assert by_name["Example AB"]["api_url"] == (
+        "https://api.ashbyhq.com/posting-api/job-board/exampleab?includeCompensation=true")
+
+
+def test_companies_can_be_picked_by_name(client):
+    def names(query: str) -> list[str]:
+        response = client.get("/machine/companies", headers=KEY, params={"names": query})
+        return [c["name"] for c in response.json()]
+
+    assert names("Example LV, Example GH") == ["Example GH", "Example LV"]
+    assert names("") == ["Example AB", "Example GH", "Example LV"]
+    assert names(" , ") == ["Example AB", "Example GH", "Example LV"]
+
+
+def test_picking_an_unknown_or_inactive_company_is_an_error(client):
+    unknown = client.get("/machine/companies", headers=KEY, params={"names": "Example GH,Nope"})
+    assert unknown.status_code == 422
+    assert unknown.json()["detail"] == "not active companies: Nope"
+    client.post("/machine/links/resolve", headers=KEY, json={"url": LEVER_LINK})  # adds newco, not active
+    inactive = client.get("/machine/companies", headers=KEY, params={"names": "newco"})
+    assert inactive.status_code == 422
+
+
 def test_ingest_then_ingest_again(client):
     first = ingest(client, load_fixture("greenhouse_board.json"))
     assert first.status_code == 200
@@ -60,6 +87,7 @@ def test_ingest_rejects_wrong_source_and_unreadable_payload_without_closing_anyt
     assert wrong_source.status_code == 422
     unreadable = ingest(client, {"ok": False, "error": "Document not found"})
     assert unreadable.status_code == 422
+    assert "board response for Example GH" in unreadable.json()["detail"]
     closed = conn.execute("SELECT count(*) AS n FROM postings WHERE closed_at IS NOT NULL").fetchone()["n"]
     assert closed == 0
 
