@@ -343,6 +343,8 @@ TypeScript side turns positions into highlighted spans, merging overlaps. That f
 - n8n retries HTTP calls (three tries, five seconds apart), and the error workflow emails any failure of a
   scheduled or webhook run. A company whose board cannot be fetched does not stop the others; the run then
   fails at the end and the alert names the board.
+- Every service has `restart: unless-stopped`, so the stack and its schedules come back when Docker starts
+  again after a reboot. `make down` stops them until the next `make up`.
 - Each ingest call records its counts, and each LLM call records tokens and cost. The digest and the
   stats endpoint read from these.
 - Retention: ads not returned by a complete board fetch, or past their closing date, get `closed_at`.

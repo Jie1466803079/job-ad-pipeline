@@ -59,3 +59,9 @@ def test_every_setting_read_from_env_is_in_env_example():
     set_by_compose_or_the_image = {"database_url", "config_dir", "web_dir"}
     names = {name.upper() for name in Settings.model_fields if name not in set_by_compose_or_the_image}
     assert names <= example_keys()
+
+
+def test_services_come_back_when_docker_restarts():
+    # Without this, a reboot leaves the stack stopped and the daily schedules stop with it, with no alert.
+    assert {name: service.get("restart") for name, service in SERVICES.items()} == dict.fromkeys(
+        SERVICES, "unless-stopped")

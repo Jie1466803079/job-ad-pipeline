@@ -1,6 +1,7 @@
 services:
   db:
     image: postgres:16
+    restart: unless-stopped
     environment:
       POSTGRES_USER: jobpipe
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-jobpipe}
@@ -20,6 +21,7 @@ services:
     build:
       context: .
       dockerfile: api/Dockerfile
+    restart: unless-stopped
     env_file: .env
     environment:
       DATABASE_URL: postgresql://jobpipe:${POSTGRES_PASSWORD:-jobpipe}@db:5432/jobpipe
@@ -40,6 +42,7 @@ services:
   # Catches every email n8n sends. Read them at http://127.0.0.1:8025.
   mailpit:
     image: axllent/mailpit:v1.31.4
+    restart: unless-stopped
     environment:
       MP_MAX_MESSAGES: "5000"
       TZ: Australia/Sydney
@@ -48,6 +51,7 @@ services:
 
   n8n:
     image: docker.n8n.io/n8nio/n8n:2.42.5
+    restart: unless-stopped
     # Listed one by one and never env_file: workflows can read this environment with $env, so it must
     # hold no API keys. The API key and webhook secret live in n8n's encrypted credentials instead.
     environment:
