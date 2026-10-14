@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from jobpipe import repo
 from jobpipe.clock import sydney_today
 from jobpipe.deps import get_conn, require_api_key
+from jobpipe.digest_email import render_digest
 from jobpipe.pipeline import Pipeline, UnreadablePayload
 from jobpipe.sources.urls import LinkRejected, board_api_url, resolve_link
 
@@ -76,6 +77,15 @@ def resolve(body: ResolveRequest, conn: Connection = Depends(get_conn)):
 def digest(conn: Connection = Depends(get_conn)) -> dict:
     since = datetime.now(UTC) - timedelta(hours=24)
     return repo.digest(conn, since=since, today=sydney_today())
+
+
+@router.get("/digest/email")
+def digest_email(request: Request, conn: Connection = Depends(get_conn)) -> dict:
+    today = sydney_today()
+    since = datetime.now(UTC) - timedelta(hours=24)
+    email = render_digest(repo.digest(conn, since=since, today=today), today,
+                          request.app.state.settings.review_url)
+    return asdict(email)
 
 
 @router.post("/maintenance")

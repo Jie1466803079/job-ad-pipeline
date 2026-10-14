@@ -122,6 +122,16 @@ def test_digest_and_maintenance(client):
     assert set(maintenance) == {"closed", "text_deleted"}
 
 
+def test_digest_email(client):
+    assert client.get("/machine/digest/email").status_code == 401
+    ingest(client, load_fixture("greenhouse_board.json"))
+    email = client.get("/machine/digest/email", headers=KEY).json()
+    assert set(email) == {"subject", "text", "html"}  # never a top-level "error": n8n would retry the call
+    assert " 1 new, " in email["subject"]
+    assert "- Data Engineer at Example GH." in email["text"]
+    assert "http://127.0.0.1:8000/#/postings/" in email["text"]
+
+
 def test_internal_errors_are_not_reported_as_unreadable_payloads(client, monkeypatch):
     def broken_checks(*args, **kwargs):
         raise ValueError("bug in the checks")

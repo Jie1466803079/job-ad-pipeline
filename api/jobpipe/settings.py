@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     anthropic_api_key: str | None = None
     claude_model: str = "claude-opus-5-5"
     claude_effort: str = "low"
+    review_url: str = "http://127.0.0.1:8000"
     webhook_secret: str | None = None
     smtp_host: str = "mailpit"
     smtp_port: int = 1025
