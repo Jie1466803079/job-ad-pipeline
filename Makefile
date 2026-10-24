@@ -40,6 +40,9 @@ eval-sample:
 eval-labels:
 	$(PY) -m jobpipe.eval.labels
 
+eval-run:
+	set -a; . ./.env; set +a; $(PY) -m jobpipe.eval.run $(ARGS)
+
 n8n-setup: up
 	scripts/n8n-setup.sh
 
