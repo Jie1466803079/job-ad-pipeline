@@ -59,6 +59,15 @@ def test_reads_what_a_spreadsheet_saves(tmp_path):
     assert labels["ad002"].salary == Salary(min=95000, max=95000, currency="AUD", period="hour")
 
 
+def test_reads_a_sheet_saved_in_an_older_spreadsheet_encoding(tmp_path):
+    # Excel's plain "CSV" format is not UTF-8, so the en dash in a title such as IMC's is saved as one byte.
+    cells = row("ad001")
+    cells[2] = "Commodities Analyst \u2013 China"
+    path = write_rows(tmp_path / "labels.csv", [cells], encoding="cp1252")
+    labels, unlabelled, problems = read_labels(path)
+    assert (sorted(labels), unlabelled, problems) == (["ad001"], [], [])
+
+
 def test_reports_every_cell_it_cannot_read_with_its_line(tmp_path):
     path = write_rows(tmp_path / "labels.csv", [
         row("ad001", work_rights="citizen"),

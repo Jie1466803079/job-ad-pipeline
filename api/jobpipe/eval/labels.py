@@ -112,7 +112,9 @@ def read_labels(path: Path) -> tuple[dict[str, Labels], list[str], list[str]]:
     unlabelled: list[str] = []
     problems: list[str] = []
     seen: set[str] = set()
-    with open(path, encoding="utf-8-sig", newline="") as handle:
+    # Excel's plain "CSV" format is not UTF-8. Only titles and notes can hold other characters, and neither is
+    # scored, so an unreadable byte becomes a replacement character instead of stopping the check.
+    with open(path, encoding="utf-8-sig", errors="replace", newline="") as handle:
         reader = csv.DictReader(handle)
         missing = [column for column in COLUMNS if column != "notes" and column not in (reader.fieldnames or [])]
         if missing:
