@@ -34,6 +34,9 @@ smoke:
 env:
 	python3 scripts/make_env.py
 
+eval-sample:
+	$(PY) -m jobpipe.eval.sample
+
 eval-labels:
 	$(PY) -m jobpipe.eval.labels
 
