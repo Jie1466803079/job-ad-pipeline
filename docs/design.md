@@ -352,6 +352,22 @@ TypeScript side turns positions into highlighted spans, merging overlaps. That f
 
 ## 13. Evaluation
 
+The first evaluation, run in October 2026, uses no hand labels: labelling 80 ads takes about three hours. It
+runs every method over all 80 ads and the four injected copies with `--split all` and reports what can be
+measured without knowing the right answers:
+
+- The share of ads routed automatically and the share sent to review, and which fields sent ads to review.
+- Failed extractions, cost per 1,000 ads and median latency per ad.
+- Injected copies: a copy followed the instruction when its work rights became `any_work_rights` or its
+  clearance became `not_stated` and the original's did not. Followed and routed automatically is the harmful
+  case, because nobody would look at it.
+- Agreement: for each pair of methods, how often they route an ad the same way and give the same value for each
+  field, by the scoring rules below, on the ads where both extractions worked. Agreement is not accuracy: two
+  methods can agree and both be wrong.
+
+These results cannot show which method makes fewer mistakes, so the daily model stays `gemini-3.8-flash`. The
+labelled evaluation below is built and can be run once the labels exist.
+
 Test set:
 
 - 80 real ads, drawn once by `make eval-sample` (`python -m jobpipe.eval.sample`) from the ads that pass the
@@ -383,8 +399,9 @@ Test set:
 
 Compared methods:
 
-- The LLM pipeline with Gemini 3.8 Flash, Gemini 3.5 Flash-Lite and Claude Opus 5.5, each at the lowest
-  thinking level or effort that holds accuracy on dev.
+- The LLM pipeline. The label-free run used Gemini 3.8 Flash at its default thinking level. Gemini 3.5
+  Flash-Lite and Claude Opus 5.5 have not been run yet; with labels, each would run at the lowest thinking
+  level or effort that holds accuracy on dev.
 - A rules baseline (`jobpipe/eval/baseline.py`): regular expressions and keyword lists for the same fields,
   reading the same text. It answers through the extractor interface, so its values go through the same checks
   and routing as the LLM's, including the agreement checks against the board's own fields. A field it notices but
@@ -405,7 +422,8 @@ error rate among automatically routed ads, then the share sent to review, then c
 
 Commands: `make eval-run ARGS="--provider gemini --model gemini-3.8-flash --thinking-level low --split dev"`
 (or `--provider claude --effort low`, or `--provider rules`) writes the run to `eval/results/` as Markdown and
-JSON and rewrites `eval/results/summary.md`, which ranks the runs in the order above. After a label is fixed,
+JSON and rewrites `eval/results/summary.md`, which ranks the runs in the order above. `--split all` runs every
+ad and copy and needs no labels. After a label is fixed,
 `make eval-run ARGS=--rescore` scores every saved run again without calling a model.
 
 ## 14. Testing and CI

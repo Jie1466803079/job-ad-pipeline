@@ -11,6 +11,7 @@ counts as not labelled yet.
   title and text as they were on the day the sample was drawn, which is what every method reads.
 - Don't open these ads on the review page until all 80 are labelled. The review page shows what Gemini extracted,
   and the labels must not be influenced by any model's answers.
+- Don't read `eval/results/` until all 80 are labelled either: the runs saved there hold each method's answers.
 - The link in each file is for reference only. If the ad has changed or closed since, the text file is what
   counts.
 - Label what the ad's text says, title included. Ignore the tags a job board shows beside an ad, such as a
