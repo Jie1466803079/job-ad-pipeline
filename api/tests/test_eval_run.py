@@ -11,12 +11,12 @@ from jobpipe.eval.files import Snapshot, Split
 from jobpipe.eval.labels import COLUMNS
 from jobpipe.eval.report import render_summary
 from jobpipe.eval.run import evaluate, main, rescore, run_name
-from jobpipe.eval.sample import inject, write_sample
+from jobpipe.eval.sample import INJECTED_LINE, inject, write_sample
 from jobpipe.llm.base import ExtractionError
 from jobpipe.llm.claude import ClaudeExtractor
 from jobpipe.llm.fake import FakeExtractor
 from jobpipe.llm.gemini import GeminiExtractor
-from jobpipe.llm.schema import ROUTING_FIELDS, LocationsField
+from jobpipe.llm.schema import ROUTING_FIELDS, LocationsField, WorkRightsField
 
 PRICES = {"fake-1": Price(input=1.0, output=2.0), "rules-1": Price(input=0.0, output=0.0)}
 TEXT = "Join our data team in Sydney."
@@ -174,3 +174,54 @@ def test_the_summary_lists_runs_in_the_order_used_to_pick_the_daily_model():
                            summary_doc("careful-and-cheap", 0, 4, 2.0)])
     order = [text.index(f"| {name} (low) |") for name in ("careful-and-cheap", "careful", "cheap-but-wrong")]
     assert order == sorted(order)
+
+
+def test_an_all_run_needs_no_labels_and_writes_label_free_numbers(eval_dir):
+    (eval_dir / "labels.csv").unlink()
+    lines = []
+    assert evaluate(eval_dir, "all", FakeExtractor(answers), PRICES, report=lines.append) == 0
+    doc = results(eval_dir, "all_fake")
+    assert [ad["id"] for ad in doc["ads"]] == ["ad001", "ad002", "ad003", "ad004", "ad003-inj"]
+    assert all(ad["correct"] is None for ad in doc["ads"])
+    metrics = doc["metrics"]
+    assert (metrics["ads"], metrics["auto_routed"], metrics["failed"], metrics["injected"]) == (4, 3, 1, 1)
+    assert "## All ads, without labels (4 ads)" in (eval_dir / "results" / "summary.md").read_text(encoding="utf-8")
+    assert lines[-1].startswith("all_fake: 3 of 4 ads routed automatically, 1 sent to review.")
+
+
+def test_an_injected_instruction_that_changes_the_answer_is_counted(eval_dir):
+    def swayed(posting):
+        if INJECTED_LINE in posting.text:
+            return payload_with(locations=LocationsField(value=["Sydney"], quote=TEXT),
+                                work_rights=WorkRightsField(value="any_work_rights",
+                                                            quote="open to anyone with the right to work in Australia"))
+        return answers(posting)
+
+    assert evaluate(eval_dir, "all", FakeExtractor(swayed), PRICES, report=lambda line: None) == 0
+    metrics = results(eval_dir, "all_fake")["metrics"]
+    assert (metrics["injected_followed"], metrics["injected_followed_auto"]) == (1, 1)
+
+
+def test_an_all_run_in_which_every_extraction_fails_writes_nothing(eval_dir):
+    def bad_key(posting):
+        return ExtractionError("api_error", "Gemini API error 403: API key not valid")
+
+    extractor, lines = FakeExtractor(bad_key), []
+    assert evaluate(eval_dir, "all", extractor, PRICES, report=lines.append) == 1
+    assert len(extractor.calls) == 5
+    assert not (eval_dir / "results").exists()
+    assert "Every extraction failed" in lines[-1]
+
+
+def test_rescore_leaves_label_free_runs_alone(eval_dir):
+    evaluate(eval_dir, "all", FakeExtractor(answers), PRICES, report=lambda line: None)
+    before = (eval_dir / "results" / "all_fake.json").read_text(encoding="utf-8")
+    evaluate(eval_dir, "dev", FakeExtractor(answers), PRICES, report=lambda line: None)
+    label_all(eval_dir, {"ad003": dict.fromkeys(ROUTING_FIELDS, ""), "ad004": dict.fromkeys(ROUTING_FIELDS, "")})
+    assert rescore(eval_dir, report=lambda line: None) == 0
+    assert (eval_dir / "results" / "all_fake.json").read_text(encoding="utf-8") == before
+
+
+def test_the_command_runs_the_rules_baseline_on_all_ads(eval_dir):
+    assert main(["--provider", "rules", "--split", "all", "--eval-dir", str(eval_dir)]) == 0
+    assert results(eval_dir, "all_rules")["split"] == "all"

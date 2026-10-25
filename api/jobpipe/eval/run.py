@@ -1,13 +1,15 @@
-"""Run one method over the dev or test ads and score it against the labels.
+"""Run one method over the dev or test ads and score it against the labels, or over every ad without labels.
 
     python -m jobpipe.eval.run --provider rules --split dev
+    python -m jobpipe.eval.run --provider gemini --split all                   every ad and copy, no labels needed
     python -m jobpipe.eval.run --provider gemini --model gemini-3.8-flash --thinking-level low --split dev
     python -m jobpipe.eval.run --provider claude --effort low --split dev     needs ANTHROPIC_API_KEY
     python -m jobpipe.eval.run --rescore                                       score every saved run again
 
 A run writes eval/results/<run>.json and <run>.md and rewrites eval/results/summary.md. A test run also runs
 the copies with an injected line. The test split is scored once per method, so a second test run of the same
-method is refused; after fixing a label, --rescore recomputes every score from the saved values.
+method is refused; after fixing a label, --rescore recomputes every score from the saved values. A run with
+--split all reads every ad and every copy and no labels, so its numbers say nothing about accuracy.
 """
 
 import argparse
@@ -25,7 +27,7 @@ from jobpipe.eval.baseline import RulesExtractor
 from jobpipe.eval.files import EVAL_DIR, Snapshot, load_snapshot, load_split
 from jobpipe.eval.labels import Labels, read_labels
 from jobpipe.eval.report import render_run, render_summary
-from jobpipe.eval.score import score_values, summarise, values_of
+from jobpipe.eval.score import score_values, summarise, summarise_unlabelled, values_of
 from jobpipe.llm.base import ExtractionError, Extractor
 from jobpipe.llm.factory import make_extractor
 from jobpipe.llm.fake import FakeExtractor
@@ -54,8 +56,10 @@ def prompt_version() -> str:
     return hashlib.sha256(SYSTEM_PROMPT.encode("utf-8")).hexdigest()[:12]
 
 
-def score_ad(snapshot: Snapshot, extractor: Extractor, labels: dict[str, Labels], prices: dict[str, Price]) -> dict:
-    """Extract, check and route one ad as the pipeline does, then score it. Nothing from the ad text is kept."""
+def score_ad(snapshot: Snapshot, extractor: Extractor, labels: dict[str, Labels] | None,
+             prices: dict[str, Price]) -> dict:
+    """Extract, check and route one ad as the pipeline does, then score it if there are labels. Nothing from the ad
+    text is kept."""
     posting = snapshot.posting
     payload, usage, error = None, None, None
     try:
@@ -73,7 +77,7 @@ def score_ad(snapshot: Snapshot, extractor: Extractor, labels: dict[str, Labels]
     return {
         "id": snapshot.id, "original": snapshot.altered_from, "route": decision.route,
         "reasons": decision.reasons, "failed": payload is None, "values": values,
-        "correct": score_values(values, labels[snapshot.altered_from or snapshot.id]),
+        "correct": score_values(values, labels[snapshot.altered_from or snapshot.id]) if labels is not None else None,
         "input_tokens": usage.input_tokens if usage else 0, "output_tokens": usage.output_tokens if usage else 0,
         "latency_ms": usage.latency_ms if usage else 0, "cost_usd": cost or 0.0,
     }
@@ -118,10 +122,13 @@ def evaluate(eval_dir: Path, split_name: str, extractor: Extractor, prices: dict
         report("eval/split.json does not exist yet. Run make eval-sample first.")
         return 1
     split = load_split(eval_dir)
-    ids = split.dev if split_name == "dev" else split.test + list(split.injected)
-    labels = _labels_for(eval_dir, {split.injected.get(ad_id, ad_id) for ad_id in ids}, report)
-    if labels is None:
-        return 1
+    if split_name == "all":
+        ids, labels = sorted(split.dev + split.test) + sorted(split.injected), None
+    else:
+        ids = split.dev if split_name == "dev" else split.test + list(split.injected)
+        labels = _labels_for(eval_dir, {split.injected.get(ad_id, ad_id) for ad_id in ids}, report)
+        if labels is None:
+            return 1
     snapshots = [load_snapshot(eval_dir, ad_id) for ad_id in ids]
     started = now()
 
@@ -138,18 +145,22 @@ def evaluate(eval_dir: Path, split_name: str, extractor: Extractor, prices: dict
     llm = extractor.provider not in ("rules", "fake")
     doc = {"run": name, "split": split_name, "provider": extractor.provider, "model": extractor.model,
            "setting": setting_of(extractor), "prompt": prompt_version() if llm else None,
-           "date": started.isoformat(), "metrics": summarise(ads, labels), "ads": ads}
+           "date": started.isoformat(),
+           "metrics": summarise(ads, labels) if labels is not None else summarise_unlabelled(ads), "ads": ads}
     write_results(results_dir, doc)
     write_summary(results_dir)
     m = doc["metrics"]
-    report(f"{name}: {m['auto_routed']} of {m['ads']} ads routed automatically, {m['auto_routed_wrong']} of them "
-           f"with a wrong field. Report: {results_dir / (name + '.md')}")
+    outcome = (f"{m['auto_routed_wrong']} of them with a wrong field" if labels is not None
+               else f"{m['routes']['review']} sent to review")
+    report(f"{name}: {m['auto_routed']} of {m['ads']} ads routed automatically, {outcome}. "
+           f"Report: {results_dir / (name + '.md')}")
     return 0
 
 
 def rescore(eval_dir: Path, report: Callable[[str], None] = print) -> int:
     results_dir = eval_dir / "results"
     docs = [json.loads(path.read_text(encoding="utf-8")) for path in sorted(results_dir.glob("*.json"))]
+    docs = [doc for doc in docs if doc["split"] != "all"]  # runs without labels have nothing to rescore
     needed = {ad["original"] or ad["id"] for doc in docs for ad in doc["ads"]}
     labels = _labels_for(eval_dir, needed, report)
     if labels is None:
@@ -159,7 +170,7 @@ def rescore(eval_dir: Path, report: Callable[[str], None] = print) -> int:
             ad["correct"] = score_values(ad["values"], labels[ad["original"] or ad["id"]])
         doc["metrics"] = summarise(doc["ads"], labels)
         write_results(results_dir, doc)
-    if docs:
+    if results_dir.exists():
         write_summary(results_dir)
     report(f"Scored {len(docs)} runs again with the current labels.")
     return 0
@@ -186,7 +197,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--model", help="instead of GEMINI_MODEL or CLAUDE_MODEL")
     parser.add_argument("--thinking-level", help="Gemini only, for example low or high")
     parser.add_argument("--effort", help="Claude only, for example low or high")
-    parser.add_argument("--split", choices=["dev", "test"])
+    parser.add_argument("--split", choices=["dev", "test", "all"])
     parser.add_argument("--concurrency", type=int, default=4, help="ads sent at the same time (default 4)")
     parser.add_argument("--rescore", action="store_true", help="score every saved run again with the current labels")
     parser.add_argument("--eval-dir", type=Path, default=EVAL_DIR)
