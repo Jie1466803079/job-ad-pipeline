@@ -1,5 +1,6 @@
 """The Markdown reports: one for each run, and a summary that compares the runs."""
 
+from jobpipe.eval.score import agreement, injection_effects
 from jobpipe.llm.schema import ROUTING_FIELDS
 
 
@@ -23,7 +24,48 @@ def wrong_fields(ad: dict) -> str:
     return ", ".join(name for name, right in ad["correct"].items() if not right) or "none"
 
 
+def _changed(effect: dict) -> str:
+    if effect["changed"] is None:
+        return "not compared (an extraction failed)"
+    return ", ".join(effect["changed"]) or "none"
+
+
+def _render_unlabelled_run(doc: dict) -> str:
+    m = doc["metrics"]
+    n = m["ads"]
+    prompt = f" Prompt version {doc['prompt']}." if doc["prompt"] else ""
+    lines = [
+        f"# {doc['run']}", "",
+        f"{method_label(doc)} on all {n} ads, without labels, run on {doc['date'][:10]}.{prompt}", "",
+        "These numbers do not measure accuracy: nobody has checked the values against the ads.", "",
+        "## Routing", "",
+        f"- Routed automatically: {share(m['auto_routed'], n)}: {m['routes']['tracked']} to the tracker and "
+        f"{m['routes']['ineligible']} as not eligible.",
+        f"- Sent to review: {share(m['routes']['review'], n)}.",
+        f"- Failed extractions: {m['failed']}.", "",
+        "## Why ads went to review", "",
+        "Each ad counts once for every field that failed a check.", "",
+    ]
+    if m["review_fields"]:
+        lines += ["| Field | Ads |", "|---|---|",
+                  *[f"| {name} | {count} |" for name, count in m["review_fields"].items()], ""]
+    else:
+        lines += ["None.", ""]
+    lines += ["## Cost and speed", "",
+              f"US${m['cost_per_1000_usd']:.2f} per 1,000 ads; median {seconds(m['median_latency_ms'])} per ad.", ""]
+    if m["injected"]:
+        lines += ["## Copies with an injected instruction", "",
+                  f"Followed the injected instruction: {m['injected_followed']} of {m['injected']}, routed "
+                  f"automatically: {m['injected_followed_auto']}.", "",
+                  "| Copy | Original route | Copy route | Changed fields |", "|---|---|---|---|",
+                  *[f"| {effect['id']} | {effect['original_route']} | {effect['route']} | {_changed(effect)} |"
+                    for effect in injection_effects(doc["ads"])], ""]
+    return "\n".join(lines)
+
+
 def render_run(doc: dict) -> str:
+    if doc["split"] == "all":
+        return _render_unlabelled_run(doc)
     m = doc["metrics"]
     n = m["ads"]
     prompt = f" Prompt version {doc['prompt']}." if doc["prompt"] else ""
@@ -64,11 +106,52 @@ def rank(doc: dict) -> tuple:
     return wrong_share, m["routes"]["review"] / max(m["ads"], 1), m["cost_per_1000_usd"], doc["run"]
 
 
+def rank_unlabelled(doc: dict) -> tuple:
+    """The order of runs without labels: the fewest sent to review, then cost."""
+    m = doc["metrics"]
+    return m["routes"]["review"] / max(m["ads"], 1), m["cost_per_1000_usd"], doc["run"]
+
+
+def _unlabelled_summary(runs: list[dict]) -> list[str]:
+    n = runs[0]["metrics"]["ads"]
+    lines = [f"## All ads, without labels ({n} ads)", "",
+             "These runs have no labels, so they say nothing about accuracy. They are listed by the share sent to "
+             "review, then cost.", "",
+             "| Method | Routed automatically | Sent to review | Failed | Cost per 1,000 ads | Median time per ad "
+             "| Injected instruction followed | Prompt |",
+             "|---|---|---|---|---|---|---|---|"]
+    for doc in runs:
+        m = doc["metrics"]
+        lines.append(f"| {method_label(doc)} | {share(m['auto_routed'], m['ads'])} "
+                     f"| {share(m['routes']['review'], m['ads'])} | {m['failed']} | US${m['cost_per_1000_usd']:.2f} "
+                     f"| {seconds(m['median_latency_ms'])} | {m['injected_followed']} of {m['injected']} "
+                     f"({m['injected_followed_auto']} routed automatically) | {doc['prompt'] or '-'} |")
+    if len(runs) > 1:
+        lines += ["", "How often two methods route an ad the same way, and give the same value for each field where "
+                  "both extractions worked, compared by the scoring rules in eval/LABELLING.md. Agreement is not "
+                  "accuracy: two methods can agree and both be wrong.", "",
+                  "| Methods | Ads | Same route | Values compared | " + " | ".join(ROUTING_FIELDS) + " |",
+                  "|---" * (len(ROUTING_FIELDS) + 4) + "|"]
+        for index, doc in enumerate(runs):
+            for other in runs[index + 1:]:
+                result = agreement(doc, other)
+                lines.append(f"| {method_label(doc)} vs {method_label(other)} | {result['ads']} | {result['routes']} "
+                             f"| {result['compared']} | "
+                             + " | ".join(str(result["fields"][name]) for name in ROUTING_FIELDS) + " |")
+    lines.append("")
+    return lines
+
+
 def render_summary(docs: list[dict]) -> str:
     lines = ["# Evaluation results", "",
-             "Written by `python -m jobpipe.eval.run` from the JSON files in this folder. In each split the runs "
-             "are listed in the order used to pick the daily model: the smallest share of ads with a wrong field "
-             "among those routed automatically, then the fewest sent to review, then the lowest cost.", ""]
+             "Written by `python -m jobpipe.eval.run` from the JSON files in this folder. Runs over all ads without "
+             "labels are listed by the share sent to review, then cost. Runs on the dev and test splits, which are "
+             "scored against hand labels, are listed in the order used to pick the daily model: the smallest share "
+             "of ads with a wrong field among those routed automatically, then the fewest sent to review, then the "
+             "lowest cost.", ""]
+    unlabelled = sorted((doc for doc in docs if doc["split"] == "all"), key=rank_unlabelled)
+    if unlabelled:
+        lines += _unlabelled_summary(unlabelled)
     for split in ("dev", "test"):
         runs = sorted((doc for doc in docs if doc["split"] == split), key=rank)
         if not runs:
