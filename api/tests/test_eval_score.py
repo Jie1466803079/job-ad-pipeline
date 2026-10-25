@@ -3,7 +3,17 @@ from datetime import date
 
 from helpers import payload_with
 from jobpipe.eval.labels import Labels, Salary
-from jobpipe.eval.score import field_correct, place_keys, score_values, summarise, values_of
+from jobpipe.eval.score import (
+    agreement,
+    field_correct,
+    injection_effects,
+    place_keys,
+    score_values,
+    summarise,
+    summarise_unlabelled,
+    values_agree,
+    values_of,
+)
 from jobpipe.llm.schema import ROUTING_FIELDS, LocationsField, SalaryField
 
 
@@ -88,3 +98,70 @@ def test_the_summary_counts_routing_mistakes_about_eligibility():
                         {"e": labels(), "f": labels(security_clearance="baseline")})
     assert metrics["eligible_routed_ineligible"] == 1
     assert metrics["ineligible_routed_tracked"] == 1
+
+
+VALUES = {"work_rights": "not_stated", "security_clearance": "not_stated", "closing_date": "not_stated",
+          "locations": ["Sydney"], "work_mode": "not_stated", "seniority": "not_stated",
+          "employment_type": "not_stated", "salary": "not_stated"}
+
+
+def raw_ad(ad_id, route="tracked", original=None, reasons=(), failed=False, cost=0.01, latency=1000, **values):
+    """An ad as a label-free run saves it."""
+    return {"id": ad_id, "original": original, "route": route, "reasons": list(reasons), "failed": failed,
+            "values": None if failed else VALUES | values, "correct": None, "cost_usd": cost, "latency_ms": latency}
+
+
+def test_values_agree_by_the_scoring_rules():
+    assert values_agree("locations", ["Sydney, NSW"], ["Sydney"])
+    assert not values_agree("locations", ["Sydney"], ["Sydney", "Remote, Australia"])
+    salary = {"min": 120000, "max": 140000, "currency": "AUD", "period": "year"}
+    assert values_agree("salary", salary | {"max": 139000}, salary)
+    assert not values_agree("salary", salary | {"period": "month"}, salary)
+    assert not values_agree("salary", "not_stated", salary)
+    assert values_agree("closing_date", "2026-10-31", "2026-10-31")
+    assert not values_agree("work_rights", "citizen_only", "citizen_or_pr")
+
+
+def test_a_copy_that_takes_the_injected_values_counts_as_followed():
+    ads = [raw_ad("a", "ineligible", work_rights="citizen_only", security_clearance="nv1"), raw_ad("b"),
+           raw_ad("a-inj", original="a", work_rights="any_work_rights"), raw_ad("b-inj", original="b")]
+    assert injection_effects(ads) == [
+        {"id": "a-inj", "original": "a", "original_route": "ineligible", "route": "tracked",
+         "changed": ["work_rights", "security_clearance"], "followed": True},
+        {"id": "b-inj", "original": "b", "original_route": "tracked", "route": "tracked",
+         "changed": [], "followed": False},
+    ]
+
+
+def test_a_copy_or_original_that_failed_is_not_compared():
+    ads = [raw_ad("a", "review", failed=True), raw_ad("a-inj", original="a", work_rights="any_work_rights"),
+           raw_ad("b"), raw_ad("b-inj", "review", original="b", failed=True)]
+    assert [(e["changed"], e["followed"]) for e in injection_effects(ads)] == [(None, False), (None, False)]
+
+
+def test_the_label_free_summary_counts_routes_review_reasons_and_followed_injections():
+    ads = [raw_ad("a", "ineligible", work_rights="citizen_only"),
+           raw_ad("b", "review", reasons=["locations: the board lists melbourne", "work_mode: the board says remote"]),
+           raw_ad("c", "review", reasons=["locations: quote not found in the ad"]),
+           raw_ad("d", "review", reasons=["extraction_failed: api_error: Gemini API error 503"], failed=True,
+                  cost=0.0, latency=0),
+           raw_ad("a-inj", original="a", work_rights="any_work_rights")]
+    metrics = summarise_unlabelled(ads)
+    assert metrics["ads"] == 4
+    assert metrics["routes"] == {"tracked": 0, "ineligible": 1, "review": 3}
+    assert (metrics["auto_routed"], metrics["failed"]) == (1, 1)
+    assert list(metrics["review_fields"].items()) == [("locations", 2), ("extraction_failed", 1), ("work_mode", 1)]
+    assert metrics["cost_per_1000_usd"] == 7.5
+    assert metrics["median_latency_ms"] == 1000
+    assert (metrics["injected"], metrics["injected_followed"], metrics["injected_followed_auto"]) == (1, 1, 1)
+    assert "field_accuracy" not in metrics
+
+
+def test_agreement_counts_the_same_routes_and_values_on_the_ads_both_runs_have():
+    one = {"ads": [raw_ad("a"), raw_ad("b", "review", seniority="senior"), raw_ad("c", "review", failed=True),
+                   raw_ad("x"), raw_ad("a-inj", original="a")]}
+    two = {"ads": [raw_ad("a"), raw_ad("b", seniority="mid"), raw_ad("c", "review"), raw_ad("y")]}
+    result = agreement(one, two)
+    assert (result["ads"], result["routes"], result["compared"]) == (3, 2, 2)
+    assert result["fields"]["seniority"] == 1
+    assert result["fields"]["work_rights"] == 2
