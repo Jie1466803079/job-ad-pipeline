@@ -1,6 +1,6 @@
 # Job ad pipeline
 
-A small system that collects job ads every morning from the public Greenhouse, Lever and Ashby job-board APIs, uses
+A system that collects job ads every morning from the public Greenhouse, Lever and Ashby job-board APIs, uses
 an LLM to pull out the facts that decide whether a role is worth applying for, checks every one of those facts in
 code, and routes each ad either to a tracker or to a person for review.
 
