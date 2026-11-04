@@ -1,0 +1,21 @@
+flowchart LR
+    boards["Greenhouse, Lever and Ashby APIs"]
+    joblink["Job link sent from anywhere"]
+    subgraph stack["Docker Compose"]
+        n8n["n8n workflows"]
+        api["intake-api (FastAPI)"]
+        web["Review page (React + TypeScript)"]
+        db[("Postgres")]
+        mail["Mailpit"]
+    end
+    llm["Gemini or Claude API"]
+    reviewer["Reviewer"]
+
+    n8n -->|"fetch ads"| boards
+    joblink -->|"webhook with secret"| n8n
+    n8n -->|"raw ads and API key"| api
+    api -->|"extraction request"| llm
+    api --> db
+    n8n -->|"digest and alerts"| mail
+    reviewer -->|"login"| web
+    web -->|"same-origin JSON"| api

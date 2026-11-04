@@ -1,0 +1,17 @@
+flowchart TD
+    sched["07:00 schedule in n8n"] --> fetch["Fetch each company's ads from its job board"]
+    joblink["Job link posted to the webhook"] --> std
+    fetch --> std["intake-api standardises each ad"]
+    std --> pre{"Relevant role?"}
+    pre -->|"no"| skip["Skipped"]
+    pre -->|"yes"| changed{"New or changed?"}
+    changed -->|"no"| keep["Kept as it is"]
+    changed -->|"yes"| extract["Gemini extracts eight fields, each with a quote from the ad"]
+    extract --> schema["Pydantic validates the response"]
+    schema --> checks{"Code checks every field: quote found, value matches quote, agrees with the board"}
+    checks -->|"any check fails"| review["Review queue"]
+    checks -->|"all pass, citizens only or clearance needed"| ineligible["Not eligible"]
+    checks -->|"all pass"| tracked["Tracker"]
+    review -->|"approved or corrected"| tracked
+    review -->|"dismissed"| dismissed["Dismissed"]
+    tracked --> digest["08:00 digest email"]

@@ -23,29 +23,7 @@ without a verified quote.
 - Maintenance. At 02:00, ads past their closing date are closed, and ad text is deleted 30 days after an ad
   closes.
 
-```mermaid
-flowchart LR
-    boards["Greenhouse, Lever and Ashby APIs"]
-    joblink["Job link sent from anywhere"]
-    subgraph stack["Docker Compose"]
-        n8n["n8n workflows"]
-        api["intake-api (FastAPI)"]
-        web["Review page (React + TypeScript)"]
-        db[("Postgres")]
-        mail["Mailpit"]
-    end
-    llm["Gemini or Claude API"]
-    reviewer["Reviewer"]
-
-    n8n -->|"fetch ads"| boards
-    joblink -->|"webhook with secret"| n8n
-    n8n -->|"raw ads and API key"| api
-    api -->|"extraction request"| llm
-    api --> db
-    n8n -->|"digest and alerts"| mail
-    reviewer -->|"login"| web
-    web -->|"same-origin JSON"| api
-```
+<img src="docs/diagrams/architecture.png" alt="Architecture: n8n, intake-api, review page, Postgres and Mailpit in Docker Compose, with the job boards and the model API outside">
 
 n8n owns the integration steps that are easy to see and change: schedules, the webhook, calls to the job boards,
 emails. The Python service owns the rules that have to be right and tested: what counts as a verified fact and
@@ -55,25 +33,7 @@ where an ad goes. The service never fetches from the internet itself, except for
 
 How one ad moves through the system, from the morning schedule to the tracker or the review queue.
 
-```mermaid
-flowchart TD
-    sched["07:00 schedule in n8n"] --> fetch["Fetch each company's ads from its job board"]
-    joblink["Job link posted to the webhook"] --> std
-    fetch --> std["intake-api standardises each ad"]
-    std --> pre{"Relevant role?"}
-    pre -->|"no"| skip["Skipped"]
-    pre -->|"yes"| changed{"New or changed?"}
-    changed -->|"no"| keep["Kept as it is"]
-    changed -->|"yes"| extract["Gemini extracts eight fields, each with a quote from the ad"]
-    extract --> schema["Pydantic validates the response"]
-    schema --> checks{"Code checks every field: quote found, value matches quote, agrees with the board"}
-    checks -->|"any check fails"| review["Review queue"]
-    checks -->|"all pass, citizens only or clearance needed"| ineligible["Not eligible"]
-    checks -->|"all pass"| tracked["Tracker"]
-    review -->|"approved or corrected"| tracked
-    review -->|"dismissed"| dismissed["Dismissed"]
-    tracked --> digest["08:00 digest email"]
-```
+<img src="docs/diagrams/workflow.png" width="520" alt="Pipeline workflow from the morning schedule to the tracker or the review queue">
 
 Ads that have left a board are closed during the same run. At 02:00 a maintenance run closes ads past their
 closing date and deletes ad text 30 days after an ad closes. If any scheduled run fails, an alert email is sent.
@@ -168,5 +128,6 @@ config/            companies, filters, skills profile and model prices
 eval/              labelling guide, labels, split and results (ad snapshots are git-ignored)
 scripts/           setup and demo scripts
 docs/design.md     the design
+docs/diagrams/     the README diagrams: Mermaid sources (.mmd) and the images drawn from them
 ```
 
