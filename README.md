@@ -4,8 +4,6 @@ A small system that collects job ads every morning from the public Greenhouse, L
 an LLM to pull out the facts that decide whether a role is worth applying for, checks every one of those facts in
 code, and routes each ad either to a tracker or to a person for review.
 
-I built it with Claude Code, Anthropic's AI coding agent, and I use it to track my own job applications.
-
 The rule at its centre: every value the model extracts must come with a quote copied from the ad, and plain code,
 not the model's own confidence, decides whether that value can be trusted. Nothing is marked "not eligible"
 without a verified quote.
