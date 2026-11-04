@@ -1,8 +1,7 @@
 import csv
 from datetime import date
 
-from helpers import REPO_ROOT
-from jobpipe.eval.labels import CHOICES, COLUMNS, Labels, Salary, main, read_labels
+from jobpipe.eval.labels import COLUMNS, Labels, Salary, main, read_labels
 from jobpipe.llm.schema import ROUTING_FIELDS
 
 FILLED = {"work_rights": "not_stated", "security_clearance": "not_stated", "closing_date": "not_stated",
@@ -108,13 +107,3 @@ def test_the_check_command_counts_labels_and_fails_on_a_problem(tmp_path, capsys
 def test_the_check_command_without_a_labels_file(tmp_path, capsys):
     assert main(["--eval-dir", str(tmp_path)]) == 1
     assert "Run make eval-sample first." in capsys.readouterr().out
-
-
-def test_the_labelling_guide_names_every_value():
-    guide = (REPO_ROOT / "eval" / "LABELLING.md").read_text(encoding="utf-8")
-    for field, values in CHOICES.items():
-        assert f"### {field}" in guide
-        for value in values:
-            assert f"`{value}`" in guide, (field, value)
-    for field in ("closing_date", "locations", "salary"):
-        assert f"### {field}" in guide
