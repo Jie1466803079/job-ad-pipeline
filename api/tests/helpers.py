@@ -1,9 +1,13 @@
 """Builders shared by the tests."""
 
 import json
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 
+from jobpipe import repo
+from jobpipe.checks import run_checks, verified_closing_date
+from jobpipe.configfiles import Profile, ProfileSkill
+from jobpipe.fit import fit_score
 from jobpipe.llm.schema import (
     ClosingDateField,
     ExtractionPayload,
@@ -14,6 +18,9 @@ from jobpipe.llm.schema import (
     not_stated_payload,
 )
 from jobpipe.models import BoardFields, Posting
+from jobpipe.routing import decide_route
+from jobpipe.settings import Settings
+from jobpipe.sources import standardise
 from jobpipe.sources.common import make_posting
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -84,3 +91,41 @@ SAMPLE_AD = (
     "Applications close 31 October 2026.\n"
     "Strong Python skills are essential."
 )
+
+
+SESSION_SECRET = "test-session-secret-" + "x" * 32
+
+
+def make_settings(database_url: str, config_dir: Path, **overrides) -> Settings:
+    """Settings for an app under test. Keyword arguments replace any value."""
+    values = {"database_url": database_url, "machine_api_key": "test-key", "session_secret": SESSION_SECRET,
+              "config_dir": str(config_dir), "llm_provider": "fake", "web_dir": str(config_dir / "no-web-build")}
+    return Settings(**(values | overrides))
+
+
+def greenhouse_posting() -> Posting:
+    """Fixture job 7001001, standardised. good_greenhouse_payload() is a correct extraction of it."""
+    return standardise("greenhouse", load_fixture("greenhouse_board.json"), "Example GH")[0]
+
+
+def store_ad(conn, posting: Posting, payload: ExtractionPayload | None, status: str | None = None) -> int:
+    """Store an ad as the pipeline would, with real checks, routing and fit, and return its id.
+
+    Without a payload the ad is stored as skipped. status replaces the routed status.
+    """
+    company = repo.ensure_company(conn, posting.source, "examplegh", name="Example GH")
+    posting_id = repo.insert_posting(conn, company["id"], posting, status="review")
+    closing, skip_reason = posting.board.deadline, None
+    if payload is None:
+        status, skip_reason = status or "skipped", "title: no include keyword"
+    else:
+        checks = run_checks(posting, payload, today=date(2026, 10, 6))
+        decision = decide_route(payload, checks)
+        fit = fit_score(checks, Profile(skills=[ProfileSkill(name="Python"), ProfileSkill(name="SQL")]))
+        repo.insert_extraction(conn, posting_id, posting.text_hash, "fake", "fake-1", payload, checks, decision,
+                               fit)
+        status = status or decision.route
+        closing = verified_closing_date(payload, checks) or closing
+    repo.set_status(conn, posting_id, status, skip_reason, closing)
+    conn.commit()
+    return posting_id

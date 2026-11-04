@@ -2,7 +2,15 @@
 
 from datetime import UTC, date, datetime
 
-from jobpipe.models import BoardFields, EmploymentType, Posting, SalaryPeriod, Source, WorkMode
+from jobpipe.models import (
+    BoardFields,
+    EmploymentType,
+    Posting,
+    SalaryPeriod,
+    Source,
+    WorkMode,
+    compose_full_text,
+)
 from jobpipe.textutil import sha256_text
 
 
@@ -11,7 +19,7 @@ def make_posting(*, source: Source, source_id: str, company: str, title: str, ur
     """Build a Posting. The hash covers title and text, which is what the LLM reads."""
     title = " ".join(title.split())
     return Posting(source=source, source_id=source_id, company=company, title=title, url=url,
-                   posted_at=posted_at, text=text, text_hash=sha256_text(f"{title}\n\n{text}"),
+                   posted_at=posted_at, text=text, text_hash=sha256_text(compose_full_text(title, text)),
                    board=board)
 
 

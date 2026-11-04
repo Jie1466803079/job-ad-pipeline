@@ -1,7 +1,7 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from helpers import good_greenhouse_payload, load_fixture, write_test_config
+from helpers import good_greenhouse_payload, load_fixture, make_settings, write_test_config
 from jobpipe.app import create_app
 from jobpipe.llm.fake import FakeExtractor
 from jobpipe.settings import Settings
@@ -12,8 +12,7 @@ LEVER_LINK = "https://jobs.lever.co/newco/3f2b9a52-1c1e-4c55-9d37-1b7a3a8a0001"
 
 @pytest.fixture
 def client(conn, migrated_db, tmp_path):
-    settings = Settings(database_url=migrated_db, machine_api_key="test-key",
-                        config_dir=str(write_test_config(tmp_path)), llm_provider="fake")
+    settings = make_settings(migrated_db, write_test_config(tmp_path))
     app = create_app(settings, extractor=FakeExtractor(lambda posting: good_greenhouse_payload()))
     with TestClient(app) as test_client:
         yield test_client

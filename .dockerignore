@@ -1,0 +1,11 @@
+# Send only what the image needs, so .env, data and caches never reach the build.
+*
+!api/pyproject.toml
+!api/jobpipe/
+!web/package.json
+!web/package-lock.json
+!web/index.html
+!web/tsconfig*.json
+!web/vite.config.ts
+!web/src/
+**/__pycache__/

@@ -229,9 +229,9 @@ All tables live in the `jobpipe` database. The schema is created by numbered SQL
 | Table | Main columns |
 |---|---|
 | companies | id, name, source, slug, active |
-| postings | id, company_id, source, source_id (unique with source), title, url, posted_at, board fields (JSON), text, text_hash, status, closed_at, text_deleted_at, first_seen_at, last_seen_at |
+| postings | id, company_id, source, source_id (unique with source), title, url, posted_at, board fields (JSON), text, text_hash, status, decided_at, closed_at, text_deleted_at, first_seen_at, last_seen_at |
 | extractions | id, posting_id, text_hash, provider, model, fields (JSON), checks (JSON), route, reasons, created_at |
-| reviews | id, posting_id, username, action, edited_fields (JSON), created_at |
+| reviews | id, posting_id, extraction_id, username, action, edited_fields (JSON), from_status, to_status, created_at |
 | llm_calls | id, posting_id, provider, model, input_tokens, output_tokens, cost_usd, latency_ms, request_id, outcome, error, created_at |
 | ingest_calls | id, company_id, started_at, fetched, new, changed, skipped, extracted, tracked, review, ineligible, closed, failed |
 | users | id, username, password_hash, failed_logins, locked_until |
@@ -241,7 +241,10 @@ All tables live in the `jobpipe` database. The schema is created by numbered SQL
 ad that closes after an application keeps its `applied` status.
 
 Reviewer edits are stored in `reviews`. The original extraction is never overwritten, so the evaluation can
-compare model output with corrections.
+compare model output with corrections. Each correction belongs to the extraction it was made on
+(`extraction_id`); when the ad text changes and is extracted again, older corrections stay in the history
+but no longer apply. Decisions and status changes record `from_status` and `to_status` and set
+`postings.decided_at`. The pipeline never overwrites a status a person chose.
 
 ## 8. n8n workflows
 
@@ -273,19 +276,21 @@ Review routes need a logged-in session.
 | Method and path | Purpose |
 |---|---|
 | `POST /auth/login`, `POST /auth/logout`, `GET /auth/me` | Session login |
-| `GET /api/postings?status=...` | List for a queue tab |
+| `GET /api/postings?tab=...` | List for a queue tab (`review`, `tracked`, `ineligible`, `applied`, `closed`, `skipped`, `dismissed`): at most 200 ads, with the total |
 | `GET /api/postings/{id}` | Ad text, fields, quotes with positions, check results, fit score, history |
 | `PATCH /api/postings/{id}/fields` | Save reviewer corrections |
-| `POST /api/postings/{id}/decision` | `approve` (to `tracked`), `dismiss` (to `dismissed`) or `override_ineligible` (to `tracked`) |
-| `PATCH /api/postings/{id}/status` | `applied`, `interview`, `offer`, `rejected` |
+| `POST /api/postings/{id}/decision` | `approve` (to `tracked`), `dismiss` (to `dismissed`) or `override_ineligible` (to `tracked`). Approve also restores a dismissed ad and tracks a skipped one |
+| `PATCH /api/postings/{id}/status` | `applied`, `interview`, `offer`, `rejected`, or back to `tracked`; only for tracked ads |
 | `GET /api/stats` | Counts by status, share routed automatically, LLM cost this month |
 
 ## 10. Review page
 
 - Login page.
-- Queue page with tabs for Review, Tracked, Not eligible, Applied and Closed, plus a collapsed Skipped
-  list. The Closed tab lists ads with `closed_at` set, whatever their status. Columns: company, title,
-  location, work rights, closing date, fit, status.
+- Queue page with tabs for Review, Tracked, Not eligible, Applied and Closed, plus a collapsed section with
+  the Skipped and Dismissed lists. Review, Tracked and Not eligible list open ads. Applied keeps applications
+  after their ad closes. Closed lists ads with `closed_at` set, whatever their status, except skipped and
+  dismissed ones, which stay in their own lists. Columns: company, title, location, work rights, closing
+  date, fit, status.
 - Detail page. The left side shows the ad text with each verified quote highlighted, coloured by field. The
   right side shows each field's value, quote and check result, with an edit control. Buttons approve,
   dismiss or override, and a menu sets the application status.

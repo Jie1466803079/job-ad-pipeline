@@ -141,3 +141,20 @@ def test_ad_without_text_is_skipped_without_an_llm_call(conn, setup):
     assert outcomes[0].status == "skipped"
     assert outcomes[0].reasons == ["no ad text"]
     assert extractor.calls == []
+
+
+def test_a_person_approving_an_ad_is_not_undone_by_a_later_ingest(conn, setup):
+    company, make = setup
+    unverified = good_greenhouse_payload().model_copy(
+        update={"work_rights": WorkRightsField(value="any_work_rights", quote="not in the ad")})
+    pipeline, extractor = make(lambda posting: unverified)
+    _, outcomes = pipeline.ingest(company, board(), complete=True)
+    assert outcomes[0].status == "review"
+    assert repo.decide_status(conn, outcomes[0].posting_id, "review", "tracked")
+    conn.commit()
+    changed = board()
+    changed["jobs"][0]["content"] = changed["jobs"][0]["content"].replace("31 October", "7 November")
+    _, outcomes = pipeline.ingest(company, changed, complete=True)
+    assert extractor.calls == ["7001001", "7001001"]
+    assert outcomes[0].status == "tracked"
+    assert repo.get_posting(conn, outcomes[0].posting_id)["status"] == "tracked"
