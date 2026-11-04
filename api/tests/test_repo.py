@@ -1,6 +1,6 @@
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 
-from helpers import posting_with
+from helpers import good_greenhouse_payload, greenhouse_posting, posting_with, store_ad
 from jobpipe import db, repo
 from jobpipe.configfiles import CompanyConfig
 
@@ -77,3 +77,19 @@ def test_decide_status_refuses_a_status_that_changed_meanwhile(conn):
     assert repo.decide_status(conn, posting_id, "review", "tracked")
     assert not repo.decide_status(conn, posting_id, "review", "dismissed")
     assert repo.get_posting(conn, posting_id)["status"] == "tracked"
+
+
+def test_digest_lists_ads_a_person_tracked_in_the_last_day(conn):
+    posting_id = store_ad(conn, greenhouse_posting(), None)  # skipped by the filter, so no extraction
+    assert repo.decide_status(conn, posting_id, "skipped", "tracked")  # "Track anyway"
+    conn.commit()
+    digest = repo.digest(conn, since=datetime.now(UTC) - timedelta(hours=24), today=date(2026, 10, 6))
+    assert [(ad["id"], ad["fit"]) for ad in digest["tracked"]] == [(posting_id, None)]
+
+
+def test_digest_leaves_out_ads_a_person_had_already_tracked(conn):
+    posting_id = store_ad(conn, greenhouse_posting(), good_greenhouse_payload())  # the pipeline tracked it today
+    conn.execute("UPDATE postings SET decided_at = now() - interval '2 days' WHERE id = %s", (posting_id,))
+    conn.commit()
+    digest = repo.digest(conn, since=datetime.now(UTC) - timedelta(hours=24), today=date(2026, 10, 6))
+    assert digest["tracked"] == []

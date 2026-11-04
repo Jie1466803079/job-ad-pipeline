@@ -260,15 +260,19 @@ def llm_cost_since(conn: Connection, since: datetime) -> float:
 
 
 def digest(conn: Connection, since: datetime, today: date) -> dict:
+    """What the daily email reports. tracked: open ads a person moved to tracked since `since`, and open
+    tracked ads no person decided on that the pipeline routed to tracked since `since`."""
     tracked = conn.execute(
         """SELECT p.id, c.name AS company, p.title, p.url, p.closing_date, e.fit
            FROM postings p
            JOIN companies c ON c.id = p.company_id
-           JOIN LATERAL (SELECT route, fit, created_at FROM extractions
-                         WHERE posting_id = p.id ORDER BY created_at DESC, id DESC LIMIT 1) e ON TRUE
-           WHERE p.status = 'tracked' AND p.closed_at IS NULL AND e.route = 'tracked' AND e.created_at >= %s
+           LEFT JOIN LATERAL (SELECT route, fit, created_at FROM extractions
+                              WHERE posting_id = p.id ORDER BY created_at DESC, id DESC LIMIT 1) e ON TRUE
+           WHERE p.status = 'tracked' AND p.closed_at IS NULL
+             AND (p.decided_at >= %(since)s
+                  OR (p.decided_at IS NULL AND e.route = 'tracked' AND e.created_at >= %(since)s))
            ORDER BY c.name, p.title""",
-        (since,),
+        {"since": since},
     ).fetchall()
     closing_soon = conn.execute(
         """SELECT p.id, c.name AS company, p.title, p.url, p.closing_date, p.status

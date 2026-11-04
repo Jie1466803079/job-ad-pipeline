@@ -1,0 +1,475 @@
+{
+  "id": "wfSubmitLink0001",
+  "name": "submit-link",
+  "active": false,
+  "pinData": {},
+  "tags": [],
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Australia/Sydney",
+    "saveManualExecutions": true,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveExecutionProgress": false,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": "wfErrorAlert0001"
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "job-link",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "1a2b3c40-0000-4000-8000-000000000001",
+      "name": "Job link webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        100
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "jobpipeWebhook01",
+          "name": "Job link webhook secret"
+        }
+      },
+      "webhookId": "5b0f8f0e-6c7e-4a43-9a51-0c8d7f2b6a11"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://api:8000/machine/links/resolve",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ { url: $json.body.url } }}",
+        "options": {
+          "timeout": 60000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "1a2b3c40-0000-4000-8000-000000000002",
+      "name": "Resolve link",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        220,
+        100
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "jobpipeApiKey001",
+          "name": "intake-api key"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "1a2b3c40-0000-4000-8000-0000000000c4",
+              "leftValue": "={{ [200, 400, 422].includes($json.statusCode) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "1a2b3c40-0000-4000-8000-000000000012",
+      "name": "Link check answered?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        440,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "errorType": "errorMessage",
+        "errorMessage": "={{ 'intake-api answered HTTP ' + $json.statusCode + ' to the link check' }}"
+      },
+      "id": "1a2b3c40-0000-4000-8000-000000000013",
+      "name": "Fail on an intake-api error",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        660,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "1a2b3c40-0000-4000-8000-0000000000c1",
+              "leftValue": "={{ $json.statusCode === 200 && $json.body.allowed === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "1a2b3c40-0000-4000-8000-000000000003",
+      "name": "Link allowed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        660,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { allowed: false, reason: $json.body?.reason ?? ($json.statusCode === 422 ? 'Send JSON with the job link in a field called url.' : 'intake-api answered HTTP ' + $json.statusCode) } }}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "1a2b3c40-0000-4000-8000-000000000004",
+      "name": "Respond rejected",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        880,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.body.api_url }}",
+        "options": {
+          "timeout": 120000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "1a2b3c40-0000-4000-8000-000000000005",
+      "name": "Fetch posting",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        880,
+        0
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "1a2b3c40-0000-4000-8000-0000000000c2",
+              "leftValue": "={{ $json.statusCode === 200 }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "1a2b3c40-0000-4000-8000-000000000006",
+      "name": "Board has the job?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1100,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { allowed: true, found: false, reason: $json.statusCode === 404 ? 'The job is not on the board any more.' : 'The job board answered HTTP ' + $json.statusCode + '. Try again later.' } }}",
+        "options": {
+          "responseCode": "={{ $json.statusCode === 404 ? 404 : 502 }}"
+        }
+      },
+      "id": "1a2b3c40-0000-4000-8000-000000000007",
+      "name": "Respond board error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1320,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://api:8000/machine/ingest",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ { company_id: $('Resolve link').item.json.body.company_id, source: $('Resolve link').item.json.body.source, payload: $json.body, complete: false, only_source_id: $('Resolve link').item.json.body.job_id } }}",
+        "options": {
+          "timeout": 7200000
+        }
+      },
+      "id": "1a2b3c40-0000-4000-8000-000000000008",
+      "name": "Ingest link",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        1320,
+        -100
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "jobpipeApiKey001",
+          "name": "intake-api key"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "1a2b3c40-0000-4000-8000-0000000000c3",
+              "leftValue": "={{ $json.counts.fetched > 0 }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "1a2b3c40-0000-4000-8000-000000000009",
+      "name": "Job in the response?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1540,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "firstIncomingItem",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "1a2b3c40-0000-4000-8000-000000000010",
+      "name": "Respond with result",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1760,
+        -200
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { allowed: true, found: false, reason: 'The job is not on the board any more.' } }}",
+        "options": {
+          "responseCode": 404
+        }
+      },
+      "id": "1a2b3c40-0000-4000-8000-000000000011",
+      "name": "Respond not on board",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1760,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Job link webhook": {
+      "main": [
+        [
+          {
+            "node": "Resolve link",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resolve link": {
+      "main": [
+        [
+          {
+            "node": "Link check answered?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Link check answered?": {
+      "main": [
+        [
+          {
+            "node": "Link allowed?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Fail on an intake-api error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Link allowed?": {
+      "main": [
+        [
+          {
+            "node": "Fetch posting",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond rejected",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch posting": {
+      "main": [
+        [
+          {
+            "node": "Board has the job?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Board has the job?": {
+      "main": [
+        [
+          {
+            "node": "Ingest link",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond board error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ingest link": {
+      "main": [
+        [
+          {
+            "node": "Job in the response?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Job in the response?": {
+      "main": [
+        [
+          {
+            "node": "Respond with result",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond not on board",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

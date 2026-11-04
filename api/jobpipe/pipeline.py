@@ -66,7 +66,8 @@ class Pipeline:
         try:
             postings = standardise(company["source"], payload, company["name"])
         except (KeyError, TypeError, ValueError, AttributeError) as exc:
-            raise UnreadablePayload(f"could not read the {company['source']} response: {exc!r}") from exc
+            raise UnreadablePayload(f"could not read the {company['source']} board response for "
+                                    f"{company['name']}: {exc!r}") from exc
         if only_source_id is not None:
             postings = [p for p in postings if p.source_id == only_source_id]
             complete = False
