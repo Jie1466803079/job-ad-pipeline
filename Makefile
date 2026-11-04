@@ -2,7 +2,8 @@ VENV := api/.venv
 PY := $(VENV)/bin/python
 DEMO_COMPANIES ?= Dovetail,Mable
 
-.PHONY: venv test lint db down up ingest-once smoke env n8n-setup demo user web web-test web-dev
+.PHONY: venv test lint db down up ingest-once smoke env n8n-setup demo user web web-test web-dev \
+	eval-sample eval-labels eval-run
 
 venv:
 	python3 -m venv $(VENV)
@@ -32,6 +33,15 @@ smoke:
 
 env:
 	python3 scripts/make_env.py
+
+eval-sample:
+	$(PY) -m jobpipe.eval.sample
+
+eval-labels:
+	$(PY) -m jobpipe.eval.labels
+
+eval-run:
+	set -a; . ./.env; set +a; $(PY) -m jobpipe.eval.run $(ARGS)
 
 n8n-setup: up
 	scripts/n8n-setup.sh

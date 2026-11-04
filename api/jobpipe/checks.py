@@ -126,7 +126,7 @@ def _matches_quote(field: str, payload: ExtractionPayload, quote: str, reference
             value = date.fromisoformat(payload.closing_date.value)
         except ValueError:
             return result(False, "value is not a date in YYYY-MM-DD form")
-        quoted = _date_from_quote(quote, reference)
+        quoted = date_from_quote(quote, reference)
         if quoted is None:
             return result(False, "no date could be read from the quote")
         return result(quoted == value, f"the quote says {quoted.isoformat()}")
@@ -144,7 +144,8 @@ def _matches_quote(field: str, payload: ExtractionPayload, quote: str, reference
     return CheckResult(field=field, name="matches_quote", status="na")
 
 
-def _date_from_quote(quote: str, reference: date) -> date | None:
+def date_from_quote(quote: str, reference: date) -> date | None:
+    """The date a quote gives, read day first. A date with no year is the first such date on or after reference."""
     try:
         first = date_parser.parse(quote, fuzzy=True, dayfirst=True, default=datetime(1904, 1, 1))
         second = date_parser.parse(quote, fuzzy=True, dayfirst=True, default=datetime(1908, 1, 1))

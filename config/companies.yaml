@@ -15,3 +15,9 @@ companies:
   - {name: Deputy, source: lever, slug: deputy}
   - {name: Immutable, source: lever, slug: immutable}
   - {name: Mable, source: lever, slug: mable}
+  # Not polled (active: false). Their Australian defence roles need citizenship or a security clearance, and
+  # the evaluation samples them for that: none of the companies above had such a role in October 2026.
+  - {name: Anduril, source: greenhouse, slug: andurilindustries, active: false}
+  - {name: DroneShield, source: greenhouse, slug: droneshield, active: false}
+  - {name: Palantir, source: lever, slug: palantir, active: false}
+  - {name: Shield AI, source: lever, slug: shieldai, active: false}
