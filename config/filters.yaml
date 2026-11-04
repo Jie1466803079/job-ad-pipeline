@@ -1,0 +1,8 @@
+# Applied before any LLM call. Matching ignores case and uses whole words.
+location_terms: [australia, au, sydney, melbourne, brisbane, perth, adelaide, canberra, hobart, darwin,
+                 apac, asia pacific, anz]
+title_include: [data, ai, ml, machine learning, engineer, engineering, analyst, analytics, scientist,
+                science, graduate, automation, developer, software, quant, quantitative, research,
+                researcher, integration, integrations, solutions]
+title_exclude: [sales, account executive, account manager, recruiter, recruitment, talent, marketing,
+                legal, counsel, payroll, receptionist]
