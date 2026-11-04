@@ -125,7 +125,6 @@ api/tests/         pytest
 web/               the review page (React, TypeScript, Vite)
 n8n/workflows/     the five n8n workflows as JSON
 config/            companies, filters, skills profile and model prices
-eval/              labelling guide, labels, split and results (ad snapshots are git-ignored)
 scripts/           setup and demo scripts
 docs/design.md     the design
 docs/diagrams/     the README diagrams: Mermaid sources (.mmd) and the images drawn from them

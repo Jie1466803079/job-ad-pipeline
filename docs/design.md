@@ -59,29 +59,7 @@ text 30 days after an ad closes.
 
 ## 4. Architecture
 
-```mermaid
-flowchart LR
-    boards[Greenhouse / Lever / Ashby APIs]
-    link[Job link from anywhere]
-    subgraph compose[Docker Compose]
-        n8n[n8n workflows]
-        api[intake-api: FastAPI]
-        web[Review page: React + TypeScript]
-        db[(Postgres)]
-        mail[Mailpit]
-    end
-    llm[Gemini or Claude API]
-    reviewer[Reviewer]
-
-    n8n -- fetch ads --> boards
-    link -- webhook with secret --> n8n
-    n8n -- raw ads, API key --> api
-    api -- extraction request --> llm
-    api --> db
-    n8n -- digest and alerts --> mail
-    reviewer -- login --> web
-    web -- same-origin JSON --> api
-```
+<img src="diagrams/architecture.png" alt="Architecture: n8n, intake-api, review page, Postgres and Mailpit in Docker Compose, with the job boards and the model API outside">
 
 | Part | Built with | Responsibility |
 |---|---|---|
